@@ -157,7 +157,28 @@ to log in. See the TODO in `server/auth.js` for wiring a real SMS gateway.
 
 ## Deploy
 
-### Backend → Render
+### Option A — Render Blueprint (backend only, one click)
+This repo includes a `render.yaml` at its root, so you can use Render's
+**New → Blueprint** flow instead of setting up the web service by hand:
+
+1. Push this repo to GitHub (see the private-repo note below).
+2. On Render: **New → Blueprint**, select the repo. Render reads `render.yaml`
+   and pre-fills a web service pointed at `server/`.
+3. Click **Apply**. Render will prompt you for the `sync: false` env vars
+   (`ADMIN_SECRET`, and the `DARAJA_*` credentials if you have them yet —
+   safe to leave blank for now, since `server/daraja.js` runs in mock mode
+   without them).
+4. Once deployed, note the service URL (e.g. `https://clearday-backend.onrender.com`)
+   for the frontend's `VITE_API_URL` in Option B below.
+
+**If Render says it can't access the repo**: this almost always means its
+GitHub App isn't authorized for that specific repo — common right after
+making a repo private. Fix: on GitHub, go to **Settings → Integrations →
+Applications → Installed GitHub Apps → Render → Configure**, then under
+"Repository access" add the repo (or switch to "All repositories"). Retry
+the Blueprint import on Render afterward.
+
+### Option B — Backend on Render, Frontend on Vercel (manual setup)
 1. Push this repo to GitHub.
 2. On Render: **New → Web Service**, point at the repo, set **root directory** to `server`.
 3. Build command: `npm install` — Start command: `npm start`.
