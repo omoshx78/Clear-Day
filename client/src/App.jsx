@@ -62,7 +62,7 @@ export default function App() {
       {token && onboarded && <NavBar onLogout={handleLogout} />}
       <main className="flex-1">
         {checking ? (
-          <p className="text-center text-slate-400 py-16">Loading...</p>
+          <p className="text-center text-faint py-16">Loading...</p>
         ) : (
           <Routes>
             <Route

@@ -19,7 +19,7 @@ export default function NavBar({ onLogout }) {
   }, [location.pathname]);
 
   return (
-    <header className="border-b bg-white sticky top-0 z-10">
+    <header className="border-b bg-surface sticky top-0 z-10">
       <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-3 flex-wrap gap-y-2">
         <span className="font-bold text-brand-700 text-lg">ClearDay</span>
         <nav className="flex gap-1 items-center flex-wrap">
@@ -30,7 +30,7 @@ export default function NavBar({ onLogout }) {
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
                 location.pathname === l.to
                   ? "bg-brand-600 text-white"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-muted hover:bg-subtlebg"
               }`}
             >
               {l.label}
@@ -52,7 +52,7 @@ export default function NavBar({ onLogout }) {
 
           <button
             onClick={onLogout}
-            className="px-3 py-1.5 rounded-full text-sm font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+            className="px-3 py-1.5 rounded-full text-sm font-medium text-faint hover:text-red-500 hover:bg-red-50 transition"
             title="Log out"
           >
             Log out

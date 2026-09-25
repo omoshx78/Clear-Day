@@ -21,8 +21,9 @@ export const api = {
   getPresets: () => request("/api/presets"),
   getCrisisResources: () => request("/api/crisis-resources"),
 
-  requestOtp: (phone) => request("/api/auth/request-otp", { method: "POST", body: JSON.stringify({ phone }) }),
-  verifyOtp: (phone, code) => request("/api/auth/verify-otp", { method: "POST", body: JSON.stringify({ phone, code }) }),
+  checkPhone: (phone) => request(`/api/auth/check-phone?phone=${encodeURIComponent(phone)}`),
+  register: (phone, pin, ageConfirmed) => request("/api/auth/register", { method: "POST", body: JSON.stringify({ phone, pin, ageConfirmed }) }),
+  login: (phone, pin) => request("/api/auth/login", { method: "POST", body: JSON.stringify({ phone, pin }) }),
 
   completeProfile: (data) => request("/api/users/me/profile", { method: "POST", body: JSON.stringify(data) }),
   getMe: () => request("/api/users/me"),

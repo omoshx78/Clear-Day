@@ -50,7 +50,7 @@ export default function Dashboard() {
   }
 
   if (error) return <p className="max-w-md mx-auto px-4 py-12 text-red-500">{error}</p>;
-  if (!user) return <p className="max-w-md mx-auto px-4 py-12 text-slate-400">Loading...</p>;
+  if (!user) return <p className="max-w-md mx-auto px-4 py-12 text-faint">Loading...</p>;
 
   const progress = Math.min(100, Math.round((user.streak / user.goalDays) * 100));
 
@@ -62,14 +62,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-center">
-        <p className="text-sm font-medium text-slate-400 uppercase tracking-wide">
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-6 text-center">
+        <p className="text-sm font-medium text-faint uppercase tracking-wide">
           {user.preset?.label || user.addiction}-free streak
         </p>
         <p className="text-6xl font-extrabold text-brand-600 my-2">{user.streak}</p>
-        <p className="text-slate-500 text-sm">days — goal is {user.goalDays}</p>
+        <p className="text-muted text-sm">days — goal is {user.goalDays}</p>
 
-        <div className="w-full h-2 bg-slate-100 rounded-full mt-4 overflow-hidden">
+        <div className="w-full h-2 bg-subtlebg rounded-full mt-4 overflow-hidden">
           <div
             className="h-full bg-brand-500 transition-all"
             style={{ width: `${progress}%` }}
@@ -84,18 +84,18 @@ export default function Dashboard() {
       <TreeVisual streak={user.streak} goalReached={user.goalReached} />
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Money saved</p>
-          <p className="text-2xl font-bold text-slate-800 mt-1">KES {user.moneySaved}</p>
+        <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-4 text-center">
+          <p className="text-xs text-faint uppercase tracking-wide">Money saved</p>
+          <p className="text-2xl font-bold text-ink mt-1">KES {user.moneySaved}</p>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Check-ins logged</p>
-          <p className="text-2xl font-bold text-slate-800 mt-1">{checkins.length}</p>
+        <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-4 text-center">
+          <p className="text-xs text-faint uppercase tracking-wide">Check-ins logged</p>
+          <p className="text-2xl font-bold text-ink mt-1">{checkins.length}</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-3">Milestones</p>
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
+        <p className="text-sm font-semibold text-ink mb-3">Milestones</p>
         <div className="flex flex-wrap gap-2">
           {MILESTONES.map((m) => (
             <span
@@ -103,7 +103,7 @@ export default function Dashboard() {
               className={`px-3 py-1 rounded-full text-xs font-medium ${
                 user.streak >= m
                   ? "bg-brand-100 text-brand-700"
-                  : "bg-slate-100 text-slate-400"
+                  : "bg-subtlebg text-faint"
               }`}
             >
               {m}d {user.streak >= m ? "✓" : ""}
@@ -113,12 +113,12 @@ export default function Dashboard() {
       </div>
 
       {hobbies.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <p className="text-sm font-semibold text-slate-700 mb-1">Try this instead</p>
-          <p className="text-xs text-slate-400 mb-3">A few ideas to fill the space, refreshed weekly</p>
+        <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
+          <p className="text-sm font-semibold text-ink mb-1">Try this instead</p>
+          <p className="text-xs text-faint mb-3">A few ideas to fill the space, refreshed weekly</p>
           <ul className="space-y-2">
             {hobbies.map((h, i) => (
-              <li key={i} className="text-sm text-slate-600 flex gap-2">
+              <li key={i} className="text-sm text-muted flex gap-2">
                 <span className="text-brand-500">•</span>{h}
               </li>
             ))}
@@ -126,14 +126,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-3">Today's check-in</p>
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
+        <p className="text-sm font-semibold text-ink mb-3">Today's check-in</p>
         {checkedInToday ? (
           <p className="text-sm text-brand-600">✓ You already checked in today. Nice work.</p>
         ) : (
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-slate-400">Craving level: {cravingLevel}/5</label>
+              <label className="text-xs text-faint">Craving level: {cravingLevel}/5</label>
               <input
                 type="range"
                 min="0"
@@ -147,7 +147,7 @@ export default function Dashboard() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="How are you feeling today? (optional)"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-lg border border-subtle px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               rows={2}
             />
             <button
@@ -162,7 +162,7 @@ export default function Dashboard() {
 
       <button
         onClick={handleRelapse}
-        className="w-full text-sm text-slate-400 hover:text-red-500 transition py-2"
+        className="w-full text-sm text-faint hover:text-red-500 transition py-2"
       >
         I slipped up — restart my streak
       </button>

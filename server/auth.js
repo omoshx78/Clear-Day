@@ -1,8 +1,6 @@
 import { nanoid } from "nanoid";
+import crypto from "crypto";
 import { db } from "./db.js";
-
-const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const pendingOtps = new Map(); // phone -> { code, expiresAt }
 
 function normalizePhone(phone) {
   // Normalize Kenyan numbers to +254 format (accepts 07..., 01..., 254..., +254...)
@@ -13,33 +11,28 @@ function normalizePhone(phone) {
   return "+" + p;
 }
 
-export function requestOtp(phoneRaw) {
-  const phone = normalizePhone(phoneRaw);
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  pendingOtps.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS });
-
-  // TODO (production): wire this to an SMS gateway — Africa's Talking is the
-  // common choice for Kenyan apps (https://africastalking.com). For now the
-  // code is logged so you can test end-to-end without SMS costs.
-  console.log(`[OTP] ${phone} -> ${code} (expires in 5 min)`);
-
-  return { phone };
+// -- PIN hashing (scrypt, built into Node — no extra dependency needed) ----
+function hashPin(pin) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(pin), salt, 64).toString("hex");
+  return `${salt}:${hash}`;
 }
 
-export function verifyOtp(phoneRaw, code) {
-  const phone = normalizePhone(phoneRaw);
-  const entry = pendingOtps.get(phone);
-  if (!entry) return { ok: false, error: "No OTP requested for this number" };
-  if (Date.now() > entry.expiresAt) {
-    pendingOtps.delete(phone);
-    return { ok: false, error: "OTP expired, request a new one" };
-  }
-  if (entry.code !== String(code)) {
-    return { ok: false, error: "Incorrect code" };
-  }
-  pendingOtps.delete(phone);
-  return { ok: true, phone };
+function verifyPin(pin, stored) {
+  const [salt, hash] = String(stored || "").split(":");
+  if (!salt || !hash) return false;
+  const hashBuffer = Buffer.from(hash, "hex");
+  const testHash = crypto.scryptSync(String(pin), salt, 64);
+  // Buffers must be equal length for timingSafeEqual, or it throws
+  if (hashBuffer.length !== testHash.length) return false;
+  return crypto.timingSafeEqual(hashBuffer, testHash);
 }
+
+const PIN_PATTERN = /^\d{4,6}$/;
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+export { normalizePhone, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS };
 
 export async function createSession(userId) {
   const token = nanoid(32);
@@ -72,6 +65,11 @@ export function getLastActive(userId) {
 }
 
 // Express middleware: requires "Authorization: Bearer <token>", attaches req.userId
+// Sessions never expire server-side (see db.data.sessions) — once issued, a
+// token keeps working until the person explicitly logs out. Combined with
+// storing it in localStorage on the client, this is what gives a web app
+// "remember this device" behavior: no separate device-linking mechanism
+// needed, since the token itself just persists in that one browser.
 export function requireAuth() {
   return async (req, res, next) => {
     const header = req.headers.authorization || "";
@@ -101,5 +99,3 @@ export function requireAdmin() {
     next();
   };
 }
-
-export { normalizePhone };

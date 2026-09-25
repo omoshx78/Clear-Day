@@ -52,14 +52,14 @@ export default function Upgrade() {
     }, 1500);
   }
 
-  if (!plan) return <p className="max-w-md mx-auto px-4 py-12 text-slate-400">Loading...</p>;
+  if (!plan) return <p className="max-w-md mx-auto px-4 py-12 text-faint">Loading...</p>;
 
   if (status?.isPro || checkoutState === "paid") {
     return (
       <div className="max-w-md mx-auto px-4 py-12 text-center space-y-4">
         <p className="text-5xl">🎉</p>
-        <h1 className="text-2xl font-bold text-slate-800">You're on ClearDay Pro</h1>
-        <p className="text-slate-500 text-sm">
+        <h1 className="text-2xl font-bold text-ink">You're on ClearDay Pro</h1>
+        <p className="text-muted text-sm">
           Active until {new Date(status?.proExpiresAt || status?.proExpiresAt).toLocaleDateString()}.
         </p>
         <a href="/dashboard" className="inline-block mt-4 text-brand-600 font-semibold hover:underline">
@@ -71,13 +71,13 @@ export default function Upgrade() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-10">
-      <h1 className="text-3xl font-bold text-slate-800 mb-1">{plan.label}</h1>
-      <p className="text-slate-500 mb-6">KES {plan.priceKes} / {plan.periodDays} days</p>
+      <h1 className="text-3xl font-bold text-ink mb-1">{plan.label}</h1>
+      <p className="text-muted mb-6">KES {plan.priceKes} / {plan.periodDays} days</p>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6">
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5 mb-6">
         <ul className="space-y-2">
           {plan.features.map((f, i) => (
-            <li key={i} className="text-sm text-slate-600 flex gap-2">
+            <li key={i} className="text-sm text-muted flex gap-2">
               <span className="text-brand-600">✓</span>{f}
             </li>
           ))}
@@ -103,8 +103,8 @@ export default function Upgrade() {
       {checkoutState === "pending" && (
         <div className="text-center space-y-3 py-6">
           <div className="w-10 h-10 mx-auto rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
-          <p className="text-sm text-slate-600">{message || "Waiting for payment..."}</p>
-          <p className="text-xs text-slate-400">Check your phone for the M-Pesa PIN prompt.</p>
+          <p className="text-sm text-muted">{message || "Waiting for payment..."}</p>
+          <p className="text-xs text-faint">Check your phone for the M-Pesa PIN prompt.</p>
         </div>
       )}
 

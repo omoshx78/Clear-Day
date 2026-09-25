@@ -3,7 +3,7 @@ import cors from "cors";
 import { nanoid } from "nanoid";
 import { db, initDb } from "./db.js";
 import { PRESETS, calcStreak, calcMoneySaved } from "./presets.js";
-import { requestOtp, verifyOtp, createSession, requireAuth, requireAdmin, normalizePhone, getLastActive } from "./auth.js";
+import { createSession, requireAuth, requireAdmin, normalizePhone, getLastActive, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS } from "./auth.js";
 import { randomQuote } from "./data-quotes.js";
 import { weeklyHobbies } from "./data-hobbies.js";
 import { CRISIS_RESOURCES } from "./data-crisis.js";
@@ -29,35 +29,92 @@ app.get("/api/crisis-resources", (req, res) => {
   res.json(CRISIS_RESOURCES);
 });
 
-// -- Auth: phone OTP ----------------------------------------------------
-app.post("/api/auth/request-otp", async (req, res) => {
-  const { phone } = req.body;
+// -- Auth: phone number + PIN -------------------------------------------
+// Web "remember this device" is just a long-lived session token kept in the
+// browser's localStorage (see server/auth.js) — no SMS/email step needed to
+// stay logged in on the same browser.
+
+// Lets the frontend know whether to show a login PIN box or a "create a PIN" flow
+app.get("/api/auth/check-phone", async (req, res) => {
+  const { phone } = req.query;
   if (!phone) return res.status(400).json({ error: "phone required" });
-  const { phone: normalized } = requestOtp(phone);
-  res.json({ ok: true, phone: normalized, message: "OTP sent (check server logs in dev mode)" });
+  await db.read();
+  const normalized = normalizePhone(phone);
+  const exists = db.data.users.some((u) => u.phone === normalized);
+  res.json({ exists });
 });
 
-app.post("/api/auth/verify-otp", async (req, res) => {
-  const { phone, code } = req.body;
-  if (!phone || !code) return res.status(400).json({ error: "phone and code required" });
-  const result = verifyOtp(phone, code);
-  if (!result.ok) return res.status(400).json({ error: result.error });
+app.post("/api/auth/register", async (req, res) => {
+  const { phone, pin, ageConfirmed } = req.body;
+  if (!phone || !pin) return res.status(400).json({ error: "phone and pin required" });
+  if (!PIN_PATTERN.test(String(pin))) return res.status(400).json({ error: "PIN must be 4-6 digits" });
+  if (ageConfirmed !== true) return res.status(400).json({ error: "You must confirm you are 18 or older" });
 
   await db.read();
-  let user = db.data.users.find((u) => u.phone === result.phone);
-  let isNewUser = false;
-  if (!user) {
-    isNewUser = true;
-    user = { id: nanoid(10), phone: result.phone, createdAt: new Date().toISOString() };
-    db.data.users.push(user);
-    await db.write();
+  const normalized = normalizePhone(phone);
+  if (db.data.users.some((u) => u.phone === normalized)) {
+    return res.status(409).json({ error: "This phone number is already registered. Try logging in instead." });
   }
+
+  const user = {
+    id: nanoid(10),
+    phone: normalized,
+    pinHash: hashPin(pin),
+    ageConfirmed: true,
+    failedPinAttempts: 0,
+    lockedUntil: null,
+    createdAt: new Date().toISOString(),
+  };
+  db.data.users.push(user);
+  await db.write();
+
   const token = await createSession(user.id);
-  res.json({ token, userId: user.id, isNewUser, onboarded: Boolean(user.addiction) });
+  res.status(201).json({ token, userId: user.id, isNewUser: true, onboarded: false });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { phone, pin } = req.body;
+  if (!phone || !pin) return res.status(400).json({ error: "phone and pin required" });
+
+  await db.read();
+  const normalized = normalizePhone(phone);
+  const user = db.data.users.find((u) => u.phone === normalized);
+  if (!user) return res.status(404).json({ error: "No account found for this number. Please sign up first." });
+
+  if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+    const minutesLeft = Math.ceil((new Date(user.lockedUntil) - new Date()) / 60000);
+    return res.status(429).json({ error: `Too many incorrect attempts. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}.` });
+  }
+
+  if (!verifyPin(pin, user.pinHash)) {
+    user.failedPinAttempts = (user.failedPinAttempts || 0) + 1;
+    if (user.failedPinAttempts >= MAX_FAILED_ATTEMPTS) {
+      user.lockedUntil = new Date(Date.now() + LOCKOUT_MS).toISOString();
+      user.failedPinAttempts = 0;
+      await db.write();
+      return res.status(429).json({ error: "Too many incorrect attempts. Try again in 15 minutes." });
+    }
+    await db.write();
+    const remaining = MAX_FAILED_ATTEMPTS - user.failedPinAttempts;
+    return res.status(401).json({ error: `Incorrect PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} left.` });
+  }
+
+  user.failedPinAttempts = 0;
+  user.lockedUntil = null;
+  await db.write();
+
+  const token = await createSession(user.id);
+  res.json({ token, userId: user.id, isNewUser: false, onboarded: Boolean(user.addiction) });
 });
 
 // -- Users (protected) ----------------------------------------------------
 // Complete/update the quit-journey profile for the logged-in user
+// Never send the PIN hash (or other internal bookkeeping) back to the client
+function sanitizeUser(user) {
+  const { pinHash, failedPinAttempts, lockedUntil, ...safe } = user;
+  return safe;
+}
+
 app.post("/api/users/me/profile", auth, async (req, res) => {
   const { addiction, quitDate, weeklySpend, goalDays } = req.body;
   if (!addiction || !PRESETS[addiction]) {
@@ -72,20 +129,20 @@ app.post("/api/users/me/profile", auth, async (req, res) => {
   user.weeklySpend = Number(weeklySpend) || 0;
   user.goalDays = Number(goalDays) || 21;
   await db.write();
-  res.json(user);
+  res.json(sanitizeUser(user));
 });
 
 app.get("/api/users/me", auth, async (req, res) => {
   await db.read();
   const user = db.data.users.find((u) => u.id === req.userId);
   if (!user) return res.status(404).json({ error: "User not found" });
-  if (!user.addiction) return res.json({ ...user, onboarded: false });
+  if (!user.addiction) return res.json({ ...sanitizeUser(user), onboarded: false });
 
   const streak = calcStreak(user.quitDate);
   const moneySaved = calcMoneySaved(user.quitDate, user.weeklySpend);
   const myInstitution = db.data.institutions.find((i) => i.createdBy === user.id);
   res.json({
-    ...user,
+    ...sanitizeUser(user),
     onboarded: true,
     preset: PRESETS[user.addiction],
     streak,
@@ -104,7 +161,7 @@ app.post("/api/users/me/relapse", auth, async (req, res) => {
   if (!user) return res.status(404).json({ error: "User not found" });
   user.quitDate = new Date().toISOString();
   await db.write();
-  res.json(user);
+  res.json(sanitizeUser(user));
 });
 
 // -- Daily check-ins (protected) -----------------------------------------

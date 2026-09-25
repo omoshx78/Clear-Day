@@ -71,8 +71,8 @@ export default function Toolkit() {
         <p className="mt-2 font-medium leading-snug">{prompt}</p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-center">
-        <p className="text-sm font-semibold text-slate-700 mb-4">Guided breathing</p>
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-6 text-center">
+        <p className="text-sm font-semibold text-ink mb-4">Guided breathing</p>
 
         {!active ? (
           <button
@@ -99,21 +99,21 @@ export default function Toolkit() {
                 <p className="text-3xl font-extrabold text-brand-700">{secondsLeft}</p>
               </div>
             </div>
-            <p className="text-xs text-slate-400">Rounds completed: {rounds}</p>
-            <button onClick={stop} className="text-sm text-slate-400 hover:text-red-500">
+            <p className="text-xs text-faint">Rounds completed: {rounds}</p>
+            <button onClick={stop} className="text-sm text-faint hover:text-red-500">
               Stop
             </button>
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-2">What triggered this urge?</p>
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
+        <p className="text-sm font-semibold text-ink mb-2">What triggered this urge?</p>
         <textarea
           value={trigger}
           onChange={(e) => setTrigger(e.target.value)}
           placeholder="e.g. stress after work, saw an ad, friends invited me out..."
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="w-full rounded-lg border border-subtle px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           rows={2}
         />
         <button

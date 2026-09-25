@@ -2,6 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #1e293b;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --border: #e2e8f0;
+  --subtle-bg: #f1f5f9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #f1f5f9;
+    --muted: #cbd5e1;
+    --faint: #94a3b8;
+    --border: #334155;
+    --subtle-bg: #1e293b;
+  }
+}
+
 html, body, #root {
   height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Native form controls (input/select/textarea) don't inherit Tailwind's
+   background/text utilities the way divs do in every browser, so pin them
+   explicitly here rather than on every single element in every page. */
+input, select, textarea {
+  background: var(--card);
+  color: var(--text);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--faint);
 }

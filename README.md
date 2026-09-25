@@ -5,6 +5,49 @@ of days (default 21). Phone-based login, streak tracking, money-saved stats, dai
 motivational quotes, hobby suggestions, a "panic button" breathing exercise for
 urges, daily check-ins, a journal, and an always-visible crisis-resources button.
 
+## Login: phone number + PIN (replaces OTP)
+No third-party SMS/email dependency for the core login flow — the person
+sets a 4-6 digit PIN at signup (same mental model as their M-Pesa PIN) and
+uses it to log in, instead of receiving a one-time code.
+
+- **`server/auth.js`** — PINs are hashed with Node's built-in `crypto.scrypt`
+  (no extra dependency), never stored or returned in plaintext. `pinHash` is
+  stripped from every API response (see `sanitizeUser()` in `index.js`).
+- **Lockout protection**: 5 wrong PIN attempts locks the account for 15
+  minutes (`server/auth.js` — `MAX_FAILED_ATTEMPTS`, `LOCKOUT_MS`).
+- **Flow**: enter phone → `GET /api/auth/check-phone` tells the frontend
+  whether to show a PIN-login box or a "create a PIN" registration form
+  (with a required 18+ confirmation checkbox, stored as `ageConfirmed` on
+  the user — a lightweight self-attestation, not a document/birthdate
+  check; consult a lawyer if you need something more rigorous for Kenya's
+  requirements around gambling/alcohol content).
+- **No name, age (beyond the 18+ checkbox), or gender collected** —
+  deliberately minimal, in keeping with the anonymity-first design used
+  throughout this app (see the Support-providers slice above).
+- **"Remember this device" on web**: sessions never expire server-side
+  (`db.data.sessions`), and the token lives in the browser's `localStorage`.
+  That's the whole mechanism — no separate device-linking needed. A person
+  stays logged in until they explicitly log out or clear browser data;
+  opening the app in a different browser requires PIN entry again.
+- **Forgotten PIN**: there's no recovery flow yet (no SMS/email channel to
+  reset through). Worth adding before real users rely on this — the
+  natural options are wiring the SMS gateway mentioned in `daraja.js`'s
+  sibling note for a reset code, or an admin-assisted reset via the
+  `/admin` dashboard.
+
+## Theming (dark-mode aware)
+The app now uses CSS variables (`client/src/index.css`) mapped into Tailwind
+as semantic colors (`client/tailwind.config.js`): `bg-page`, `bg-surface`,
+`text-ink`, `text-muted`, `text-faint`, `border-subtle`, `bg-subtlebg`. These
+automatically switch between light and dark palettes based on the visitor's
+OS/browser preference (`prefers-color-scheme`), the same mechanism the
+standalone preview HTML always used — the deployed React app didn't have
+this before and looked flat/white regardless of the visitor's system theme.
+Use these semantic classes instead of hardcoded `bg-white` / `text-slate-*`
+/ `border-slate-*` in any new screens so they stay theme-aware. The two
+solid dark buttons (`bg-slate-800`) are intentional brand accents, not
+surface colors, and don't need to change with the theme.
+
 ## Mini-game & quote refresh (final slice)
 - **Streak-linked tree** (`client/src/components/TreeVisual.jsx`) — a generative
   SVG tree on the dashboard that grows fuller with each clean day (seed → sapling
@@ -111,8 +154,9 @@ phone numbers before switching `DARAJA_ENV` to `production` with your real
 shortcode and passkey.
 
 ## What's new in this slice
-- **Real accounts** — phone number + OTP login (replaces the old local-device-only
-  identity). See `server/auth.js`.
+- **Real accounts** — phone number + PIN login (replaces the old local-device-only
+  identity, and the OTP flow from an earlier slice — see the phone+PIN section
+  above). See `server/auth.js`.
 - **Crisis resources** — a persistent "Need help now?" button, visible on every
   screen (even before login), linking to NACADA (1192), Befrienders Kenya, and
   other Kenya helplines. Never gated behind auth or payment.
@@ -149,11 +193,6 @@ npm install
 cp .env.example .env   # VITE_API_URL=http://localhost:4000
 npm run dev             # http://localhost:5173
 ```
-
-### Testing the OTP login without SMS costs
-The backend doesn't send real SMS yet — `requestOtp` logs the 6-digit code to the
-server console (`[OTP] +2547... -> 123456`). Enter that code on the "verify" screen
-to log in. See the TODO in `server/auth.js` for wiring a real SMS gateway.
 
 ## Deploy
 
@@ -195,10 +234,8 @@ the Blueprint import on Render afterward.
 4. Deploy.
 
 ## Before going live with real users
-- **Wire a real SMS gateway** for OTP delivery — Africa's Talking
-  (https://africastalking.com) is the common choice for Kenyan apps.
-- **Hash/rate-limit OTPs** — the current implementation is fine for a demo but
-  should add rate limiting (max attempts per phone) and not log codes in production.
+- **Add a "forgot PIN" recovery flow** before real users depend on this —
+  see the note in the phone+PIN section above.
 - **Move off lowdb** to a real database before you have real user data at stake.
 
 ## Remaining ideas beyond the original roadmap

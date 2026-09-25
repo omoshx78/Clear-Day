@@ -28,14 +28,14 @@ export default function CrisisButton() {
           onClick={() => setOpen(false)}
         >
           <div
-            className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm max-h-[80vh] overflow-y-auto p-6"
+            className="bg-surface rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm max-h-[80vh] overflow-y-auto p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-bold text-slate-800">You're not alone</h2>
-              <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+              <h2 className="text-lg font-bold text-ink">You're not alone</h2>
+              <button onClick={() => setOpen(false)} className="text-faint hover:text-muted text-xl leading-none">×</button>
             </div>
-            <p className="text-sm text-slate-500 mb-4">
+            <p className="text-sm text-muted mb-4">
               Free, confidential support is available right now — no cost, no judgment.
             </p>
 
@@ -46,11 +46,11 @@ export default function CrisisButton() {
                 <a
                   key={r.name}
                   href={`tel:${r.tel}`}
-                  className="block rounded-xl border border-slate-200 p-4 hover:border-brand-500 hover:bg-brand-50 transition"
+                  className="block rounded-xl border border-subtle p-4 hover:border-brand-500 hover:bg-brand-50 transition"
                 >
-                  <p className="font-semibold text-slate-800">{r.name}</p>
+                  <p className="font-semibold text-ink">{r.name}</p>
                   <p className="text-brand-700 font-medium">{r.number}</p>
-                  <p className="text-xs text-slate-500 mt-1">{r.description}</p>
+                  <p className="text-xs text-muted mt-1">{r.description}</p>
                 </a>
               ))}
             </div>

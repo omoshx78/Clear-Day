@@ -48,7 +48,7 @@ export default function Thread() {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4">
         <p className="text-4xl">🔒</p>
-        <h1 className="text-xl font-bold text-slate-800">Messaging support providers is a Pro feature</h1>
+        <h1 className="text-xl font-bold text-ink">Messaging support providers is a Pro feature</h1>
         <Link to="/upgrade" className="inline-block bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-3 rounded-xl transition">
           Upgrade to Pro
         </Link>
@@ -58,17 +58,17 @@ export default function Thread() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 flex flex-col" style={{ minHeight: "70vh" }}>
-      <h1 className="text-lg font-bold text-slate-800 mb-4">
+      <h1 className="text-lg font-bold text-ink mb-4">
         {otherProfile ? otherProfile.displayName : "Conversation"}
       </h1>
 
       <div className="flex-1 space-y-2 overflow-y-auto mb-4">
-        {messages.length === 0 && <p className="text-sm text-slate-400 text-center py-8">Say hello — this is a safe, private space.</p>}
+        {messages.length === 0 && <p className="text-sm text-faint text-center py-8">Say hello — this is a safe, private space.</p>}
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.fromUserId === meId ? "justify-end" : "justify-start"}`}>
             <div
               className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
-                m.fromUserId === meId ? "bg-brand-600 text-white" : "bg-white border border-slate-100 text-slate-700"
+                m.fromUserId === meId ? "bg-brand-600 text-white" : "bg-surface border border-subtle text-ink"
               }`}
             >
               {m.text}
@@ -86,7 +86,7 @@ export default function Thread() {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Type a message..."
-          className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="flex-1 rounded-full border border-subtle px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
         <button
           onClick={send}

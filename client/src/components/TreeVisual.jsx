@@ -47,9 +47,9 @@ export default function TreeVisual({ streak, goalReached }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 text-center">
-      <p className="text-sm font-semibold text-slate-700">Your tree</p>
-      <p className="text-xs text-slate-400 mb-2">Grows a little every clean day</p>
+    <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5 text-center">
+      <p className="text-sm font-semibold text-ink">Your tree</p>
+      <p className="text-xs text-faint mb-2">Grows a little every clean day</p>
 
       <svg viewBox="0 0 200 150" className="w-full max-w-[220px] mx-auto" style={{ overflow: "visible" }}>
         {/* ground */}
