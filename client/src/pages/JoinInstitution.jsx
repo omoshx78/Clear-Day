@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function JoinInstitution() {
   const [code, setCode] = useState("");
@@ -36,7 +37,9 @@ export default function JoinInstitution() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
+    <>
+      <BackBar fallback="/support" />
+      <div className="max-w-md mx-auto px-4 py-16">
       <h1 className="text-2xl font-bold text-ink mb-1">Join an institution</h1>
       <p className="text-muted text-sm mb-6">
         Enter the invite code from your church, mosque, employer, or recovery center.
@@ -57,6 +60,7 @@ export default function JoinInstitution() {
           {loading ? "Joining..." : "Join"}
         </button>
       </form>
-    </div>
+      </div>
+    </>
   );
 }

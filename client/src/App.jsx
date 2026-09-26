@@ -10,6 +10,7 @@ import Upgrade from "./pages/Upgrade.jsx";
 import Analytics from "./pages/Analytics.jsx";
 import Support from "./pages/Support.jsx";
 import Resources from "./pages/Resources.jsx";
+import Contact from "./pages/Contact.jsx";
 import ShareCard from "./pages/ShareCard.jsx";
 import ProviderDirectory from "./pages/ProviderDirectory.jsx";
 import ProviderApply from "./pages/ProviderApply.jsx";
@@ -152,6 +153,7 @@ export default function App() {
             <Route path="/support/join-institution" element={token && onboarded ? <JoinInstitution /> : <Navigate to="/" />} />
             <Route path="/support/institution-dashboard" element={token && onboarded ? <InstitutionDashboard /> : <Navigate to="/" />} />
             <Route path="/resources" element={token && onboarded ? <Resources /> : <Navigate to="/" />} />
+            <Route path="/contact" element={token && onboarded ? <Contact /> : <Navigate to="/" />} />
             <Route path="/share" element={token && onboarded ? <ShareCard /> : <Navigate to="/" />} />
             <Route
               path="/admin/login"

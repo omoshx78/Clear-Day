@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function ProviderApply() {
   const [specialties, setSpecialties] = useState([]);
@@ -44,7 +45,9 @@ export default function ProviderApply() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-10">
+    <>
+      <BackBar fallback="/support" />
+      <div className="max-w-md mx-auto px-4 py-10">
       <h1 className="text-2xl font-bold text-ink mb-1">Become a support provider</h1>
       <p className="text-muted text-sm mb-6">For counselors, chaplains, pastors, imams, and peer-recovery coaches.</p>
 
@@ -104,6 +107,7 @@ export default function ProviderApply() {
           {loading ? "Submitting..." : "Submit application"}
         </button>
       </form>
-    </div>
+      </div>
+    </>
   );
 }

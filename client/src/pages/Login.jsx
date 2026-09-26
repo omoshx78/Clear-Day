@@ -71,13 +71,38 @@ export default function Login({ onLoggedIn }) {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
+    <div className="max-w-md mx-auto px-4 py-12">
       <Logo size={56} className="mb-4" />
-      <h1 className="text-3xl font-bold text-ink mb-1">Welcome to ClearDay</h1>
+      <h1 className="text-3xl font-bold text-ink mb-1">
+        {step === "phone" ? "You're not alone" : "Welcome to ClearDay"}
+      </h1>
 
       {step === "phone" && (
         <>
-          <p className="text-muted mb-8">Enter your phone number to get started. No names needed.</p>
+          <p className="text-muted mb-6">
+            ClearDay is a free, private companion for anyone quitting smoking, alcohol, or gambling.
+          </p>
+
+          <ul className="space-y-3 mb-8">
+            <li className="flex gap-3 text-sm text-ink">
+              <span className="text-brand-600">✓</span>
+              <span><strong>Always free</strong> — no paywalls on the core features.</span>
+            </li>
+            <li className="flex gap-3 text-sm text-ink">
+              <span className="text-brand-600">✓</span>
+              <span><strong>Private by design</strong> — just a phone number and a PIN, no real name required.</span>
+            </li>
+            <li className="flex gap-3 text-sm text-ink">
+              <span className="text-brand-600">✓</span>
+              <span><strong>All addictions welcome</strong> — smoking, alcohol, gambling, or just sober-curious.</span>
+            </li>
+            <li className="flex gap-3 text-sm text-ink">
+              <span className="text-brand-600">✓</span>
+              <span><strong>Real tools</strong> — streak tracking, daily check-ins, a craving toolkit, and verified support providers.</span>
+            </li>
+          </ul>
+
+          <p className="text-muted mb-3">Enter your phone number to get started.</p>
           <form onSubmit={handlePhoneSubmit} className="space-y-4">
             <input
               type="tel"

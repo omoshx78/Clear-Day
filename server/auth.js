@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import crypto from "crypto";
-import { db } from "./db.js";
+import { supabase } from "./supabaseClient.js";
 
 function normalizePhone(phone) {
   // Normalize Kenyan numbers to +254 format (accepts 07..., 01..., 254..., +254...)
@@ -36,24 +36,22 @@ export { normalizePhone, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, L
 
 export async function createSession(userId) {
   const token = nanoid(32);
-  db.data.sessions ||= [];
-  db.data.sessions.push({ token, userId, createdAt: new Date().toISOString() });
-  await db.write();
+  const { error } = await supabase.from("sessions").insert({ token, userId, createdAt: new Date().toISOString() });
+  if (error) throw new Error(`Failed to create session: ${error.message}`);
   return token;
 }
 
 export async function getUserIdForToken(token) {
-  await db.read();
-  const session = (db.data.sessions || []).find((s) => s.token === token);
-  return session ? session.userId : null;
+  const { data, error } = await supabase.from("sessions").select("userId").eq("token", token).maybeSingle();
+  if (error || !data) return null;
+  return data.userId;
 }
 
 // "Last active" tracking for the admin dashboard — kept in memory rather
-// than written to disk on every request, both to avoid slowing requests down
-// and to avoid racing with each route's own read-modify-write of db.data
-// (lowdb has no locking, so two concurrent writes can clobber each other).
-// This resets on server restart, which is fine for a live "who's using the
-// app right now" view — it isn't meant to be a permanent record.
+// than written to the database on every single request, to avoid needless
+// write load on every authenticated call. This resets on server restart,
+// which is fine for a live "who's using the app right now" view — it isn't
+// meant to be a permanent record.
 const lastActiveMap = new Map(); // userId -> ISO timestamp
 
 export function touchLastActive(userId) {
@@ -65,11 +63,12 @@ export function getLastActive(userId) {
 }
 
 // Express middleware: requires "Authorization: Bearer <token>", attaches req.userId
-// Sessions never expire server-side (see db.data.sessions) — once issued, a
-// token keeps working until the person explicitly logs out. Combined with
-// storing it in localStorage on the client, this is what gives a web app
-// "remember this device" behavior: no separate device-linking mechanism
-// needed, since the token itself just persists in that one browser.
+// Sessions never expire server-side (see the `sessions` table) — once
+// issued, a token keeps working until the person explicitly logs out.
+// Combined with storing it in localStorage on the client, this is what
+// gives a web app "remember this device" behavior: no separate
+// device-linking mechanism needed, since the token itself just persists
+// in that one browser.
 export function requireAuth() {
   return async (req, res, next) => {
     const header = req.headers.authorization || "";

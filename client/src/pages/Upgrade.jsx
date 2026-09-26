@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function Upgrade() {
   const [plan, setPlan] = useState(null);
@@ -70,7 +71,9 @@ export default function Upgrade() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-10">
+    <>
+      <BackBar />
+      <div className="max-w-md mx-auto px-4 py-10">
       <h1 className="text-3xl font-bold text-ink mb-1">{plan.label}</h1>
       <p className="text-muted mb-6">KES {plan.priceKes} / {plan.periodDays} days</p>
 
@@ -121,6 +124,7 @@ export default function Upgrade() {
       )}
 
       {error && checkoutState === "idle" && <p className="text-sm text-red-500 mt-3">{error}</p>}
-    </div>
+      </div>
+    </>
   );
 }

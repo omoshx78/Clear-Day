@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function Inbox() {
   const [conversations, setConversations] = useState(null);
@@ -15,6 +16,7 @@ export default function Inbox() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-3">
+      <BackBar fallback="/support" />
       <h1 className="text-2xl font-bold text-ink mb-2">Your inbox</h1>
       {conversations.length === 0 && (
         <p className="text-sm text-faint text-center py-8">No messages yet. People you support will appear here.</p>

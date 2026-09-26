@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function InstitutionApply() {
   const [types, setTypes] = useState([]);
@@ -43,7 +44,9 @@ export default function InstitutionApply() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-10">
+    <>
+      <BackBar fallback="/support" />
+      <div className="max-w-md mx-auto px-4 py-10">
       <h1 className="text-2xl font-bold text-ink mb-1">Register your institution</h1>
       <p className="text-muted text-sm mb-6">
         You'll get a private dashboard with aggregated, anonymized progress for your members —
@@ -93,6 +96,7 @@ export default function InstitutionApply() {
           {loading ? "Submitting..." : "Submit application"}
         </button>
       </form>
-    </div>
+      </div>
+    </>
   );
 }

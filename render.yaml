@@ -11,6 +11,10 @@ services:
     envVars:
       - key: ADMIN_SECRET
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: DARAJA_ENV
         value: sandbox
       - key: DARAJA_CONSUMER_KEY

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import BreathingExercise from "../components/BreathingExercise.jsx";
+import BackBar from "../components/BackBar.jsx";
 
 const MOODS = [
   { id: "struggling", label: "Struggling", color: "#3b82f6" },
@@ -54,10 +55,12 @@ export default function CheckIn() {
   const progress = Math.round(((stepIndex + 1) / STEPS.length) * 100);
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 space-y-6">
-      <div className="w-full h-1.5 bg-subtlebg rounded-full overflow-hidden">
-        <div className="h-full bg-brand-500 transition-all" style={{ width: `${progress}%` }} />
-      </div>
+    <>
+      <BackBar />
+      <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+        <div className="w-full h-1.5 bg-subtlebg rounded-full overflow-hidden">
+          <div className="h-full bg-brand-500 transition-all" style={{ width: `${progress}%` }} />
+        </div>
 
       {step === "mood" && (
         <div className="text-center space-y-6">
@@ -152,6 +155,7 @@ export default function CheckIn() {
           </button>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

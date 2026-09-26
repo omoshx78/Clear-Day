@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function Thread() {
   const { otherId } = useParams();
@@ -47,6 +48,7 @@ export default function Thread() {
   if (locked) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4">
+        <BackBar fallback="/support" />
         <p className="text-4xl">🔒</p>
         <h1 className="text-xl font-bold text-ink">Messaging support providers is a Pro feature</h1>
         <Link to="/upgrade" className="inline-block bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-3 rounded-xl transition">
@@ -58,7 +60,8 @@ export default function Thread() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 flex flex-col" style={{ minHeight: "70vh" }}>
-      <h1 className="text-lg font-bold text-ink mb-4">
+      <BackBar fallback="/support" />
+      <h1 className="text-lg font-bold text-ink mb-4 mt-3">
         {otherProfile ? otherProfile.displayName : "Conversation"}
       </h1>
 

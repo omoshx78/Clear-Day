@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 export default function ProviderDirectory() {
   const [specialties, setSpecialties] = useState([]);
@@ -19,7 +20,9 @@ export default function ProviderDirectory() {
   }, [specialty]);
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 space-y-4">
+    <>
+      <BackBar fallback="/support" />
+      <div className="max-w-md mx-auto px-4 py-8 space-y-4">
       <h1 className="text-2xl font-bold text-ink">Find a support provider</h1>
 
       <select
@@ -53,6 +56,7 @@ export default function ProviderDirectory() {
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

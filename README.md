@@ -5,15 +5,134 @@ of days (default 21). Phone-based login, streak tracking, money-saved stats, dai
 motivational quotes, hobby suggestions, a "panic button" breathing exercise for
 urges, daily check-ins, a journal, and an always-visible crisis-resources button.
 
+## SPA routing fix + Back/Home navigation
+Two real bugs fixed:
+
+- **404 on refresh for any non-root route** (`/share`, `/checkin`, etc.) —
+  this is a standard single-page-app issue on Vercel: it serves static
+  files, so a direct hit or refresh on `/share` looks for an actual file at
+  that path and finds nothing, since routing only happens client-side via
+  React Router after `index.html` loads. Fixed with **`client/vercel.json`**,
+  which tells Vercel to serve `index.html` for every path and let React
+  Router take over:
+  ```json
+  { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+  ```
+  This only takes effect on your **next Vercel deploy** — push this file to
+  GitHub for it to apply.
+- **No way back/home on sub-pages** — added `client/src/components/BackBar.jsx`,
+  a small bar with a "← Back" (real browser history, falling back to a safe
+  route if there isn't any — e.g. landing directly on a shared link) and a
+  "🏠 Home" link, placed on every page that isn't one of the main nav tabs:
+  Check-in, Share, Contact, the whole Support flow (directory, apply as
+  provider, register/join an institution, institution dashboard, inbox,
+  message threads), and Upgrade. Dashboard/Toolkit/Journal/Analytics/Resources/
+  Support already have the top nav (and bottom nav on mobile), so they don't
+  need it.
+  While wiring this up I also caught and fixed two real bugs that would've
+  shipped broken: `Inbox.jsx` and `Thread.jsx` imported `BackBar` but never
+  actually rendered it, and `InstitutionDashboard.jsx` had a mismatched
+  fragment/div tag that broke the entire build. Caught by actually running
+  `npm run build` rather than trusting the code looked right.
+
+## Contact/feedback, crisis resources in Resources, login value props
+- **`/contact`** — a simple feedback form (Help / Suggestion / Compliment /
+  Complaint + message), posts to `POST /api/feedback`. Submissions are
+  visible in a new **Feedback tab on `/admin`**, with a "Mark resolved"
+  action (`server/index.js` — `/api/admin/feedback*`, `/api/feedback`).
+- **Resources page** now also lists the same crisis helplines the "Need
+  help now?" button shows (pulled from the same `/api/crisis-resources`),
+  so they're discoverable without needing the emergency button, plus a
+  link to `/contact`.
+- **Login's first screen** now leads with a short value-prop list (Always
+  free, Private by design, All addictions welcome, Real tools) before the
+  phone number field, instead of jumping straight to the input with no
+  context.
+
+## Persistent database (Supabase) — replaces the old JSON-file storage
+**Why this exists**: the app used to store everything in a local JSON file
+via `lowdb`. That worked for a demo, but on Render's free tier, the local
+filesystem is wiped every time the service redeploys, restarts, or spins
+down from inactivity (which happens after ~15 minutes idle) — so every
+account, streak, and message was silently getting erased. If you noticed
+having to "re-register" a phone number that should already have existed,
+this was why. The app now uses **Supabase** (hosted Postgres) instead, which
+persists properly and has a genuinely free tier with no 30-day expiry
+(unlike Render's own free Postgres, which self-destructs after 30 days).
+
+### One-time setup
+1. Create a free account and project at https://supabase.com.
+2. In your new project, go to **SQL Editor → New query**, paste the entire
+   contents of `server/schema.sql`, and click **Run**. This creates all 8
+   tables (users, sessions, checkins, journal, payments, institutions,
+   messages, feedback).
+3. Go to **Project Settings → API**. You need two values:
+   - **Project URL** (e.g. `https://abcdefgh.supabase.co`) → `SUPABASE_URL`
+   - **service_role key** (NOT the "anon" key — the service role key bypasses
+     Row Level Security, which is what a trusted backend needs; never expose
+     this key to the frontend) → `SUPABASE_SERVICE_ROLE_KEY`
+4. Set both as environment variables on Render (Dashboard → your service →
+   Environment), and locally in a `.env`-style setup if you run the backend
+   outside Render. Without them, the server refuses to start and prints
+   exactly which variable is missing.
+
+### What changed in the code
+- `server/schema.sql` — the Postgres schema, with quoted camelCase column
+  names (`"pinHash"`, `"createdAt"`, etc.) so they match the JS field names
+  used everywhere else exactly — no snake_case/camelCase mapping layer.
+- `server/supabaseClient.js` — creates the Supabase client using the
+  service role key. Exits with a clear error on startup if the env vars
+  aren't set, rather than failing confusingly later.
+- `server/db.js` and the `lowdb` dependency are gone entirely.
+- Every route in `server/index.js` that used to do
+  `await db.read(); db.data.users.find(...)` now does a direct, targeted
+  Supabase query (e.g. `supabase.from("users").select("*").eq("id", ...)`),
+  which is both more correct (no more whole-file read/write races) and only
+  fetches what each route actually needs.
+- Row Level Security is intentionally left off in `schema.sql` — the backend
+  is the only thing that ever talks to Supabase (using the service role
+  key, which bypasses RLS anyway), so there's no direct client-side access
+  to secure yet. If you later query Supabase directly from the frontend,
+  add RLS policies before doing so.
+
+### Testing note
+I couldn't reach a real Supabase project from the sandbox this was built in
+(no outbound network access to `supabase.co`), so every route was verified
+two ways instead: a full read of the final code against the original
+lowdb logic to confirm nothing was dropped, and a complete run against a
+temporary in-memory mock of the Supabase client's query-builder API
+(insert/update/select/eq/order/or) that exercised every endpoint end-to-end
+— auth, profile, check-ins, journal, Pro billing, providers, institutions,
+messaging, feedback, and all admin routes all passed. That mock was for
+testing only and isn't part of the shipped app. Worth doing a quick
+smoke test against your real Supabase project once it's deployed (register
+an account, complete onboarding, log a check-in) to confirm the live
+connection works exactly like the mock did.
+
+## On dropping Pro / ads (a note from planning this slice)
+We discussed whether to drop the Pro tier and rely on ads instead, given
+that many competing quit-addiction apps are free. Kept Pro as-is: Kenya ad
+CPMs are weak (covered earlier in this README's monetization notes), "free"
+competitors are often grant/institution-funded rather than ad-funded, and
+everything safety-critical in ClearDay (crisis resources, journal, toolkit,
+check-ins) is already free — Pro only gates supplementary features
+(analytics, 1:1 provider messaging, meditation library). The
+institution/B2B2C angle (churches, NGOs, employers) remains the strongest
+revenue lever specifically for Kenya, independent of whether Pro exists.
+
 ## Shareable streak card, Resources hub, mobile bottom nav, and reminders
 Four more ideas borrowed from reviewing a competitor app, built out fully:
 
 - **Shareable streak card** (`client/src/pages/ShareCard.jsx`, `/share`) —
   draws a branded image (streak, days-free, money saved) on an HTML canvas
-  and offers **Share** (via the Web Share API on supporting browsers/mobile,
-  with a download fallback) or **Download**. No new dependency — drawn by
-  hand with Canvas 2D rather than a screenshot library. Reachable from a
-  "Share your streak →" link on the Dashboard.
+  and offers **Share image** (via the Web Share API on supporting
+  browsers/mobile, with a download fallback) or **Download**. No new
+  dependency — drawn by hand with Canvas 2D rather than a screenshot
+  library. Also has direct **WhatsApp / Facebook / X** buttons — these open
+  each platform's share intent with a text caption + link (that's how those
+  platforms' web share links work; they can't attach a locally-generated
+  image file, only the native Web Share sheet can). Reachable from a "Share
+  your streak →" link on the Dashboard.
 - **Resources hub** (`client/src/pages/Resources.jsx`, `/resources`) — real,
   verified links to AA Kenya, the global NA meeting finder, and Gamblers
   Anonymous; a short recovery-awareness calendar (Alcohol Awareness Month,
@@ -274,9 +393,9 @@ the Blueprint import on Render afterward.
 3. Build command: `npm install` — Start command: `npm start`.
 4. Render assigns a URL like `https://your-app.onrender.com` — note it for the frontend step.
 
-> Note: Render's free tier has an ephemeral filesystem, so `data.json` (including
-> user accounts and sessions) resets on redeploy/restart. Fine for a demo/MVP; for
-> production, swap `lowdb` for a real database (Postgres via Render, or Supabase).
+> Data now persists properly via Supabase (see the "Persistent database"
+> section above) — set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as
+> environment variables on this Render service, or it will refuse to start.
 
 ### Frontend → Vercel
 1. On Vercel: **New Project**, point at the repo, set **root directory** to `client`.
@@ -287,7 +406,6 @@ the Blueprint import on Render afterward.
 ## Before going live with real users
 - **Add a "forgot PIN" recovery flow** before real users depend on this —
   see the note in the phone+PIN section above.
-- **Move off lowdb** to a real database before you have real user data at stake.
 
 ## Remaining ideas beyond the original roadmap
 - Community (grouped by addiction type, with moderation)

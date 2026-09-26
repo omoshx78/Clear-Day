@@ -62,4 +62,6 @@ export const api = {
   getThread: (otherUserId) => request(`/api/messages/${otherUserId}`),
 
   setReminders: (enabled, time) => request("/api/users/me/reminders", { method: "POST", body: JSON.stringify({ enabled, time }) }),
+
+  sendFeedback: (category, message) => request("/api/feedback", { method: "POST", body: JSON.stringify({ category, message }) }),
 };

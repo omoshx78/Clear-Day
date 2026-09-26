@@ -32,4 +32,6 @@ export const adminApi = {
   rejectProvider: (id) => request(`/api/admin/providers/${id}/reject`, { method: "POST" }),
   getPendingInstitutions: () => request("/api/admin/institutions/pending"),
   verifyInstitution: (id) => request(`/api/admin/institutions/${id}/verify`, { method: "POST" }),
+  getFeedback: () => request("/api/admin/feedback"),
+  resolveFeedback: (id) => request(`/api/admin/feedback/${id}/resolve`, { method: "POST" }),
 };

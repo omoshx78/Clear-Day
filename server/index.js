@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { nanoid } from "nanoid";
-import { db, initDb } from "./db.js";
+import { supabase } from "./supabaseClient.js";
 import { PRESETS, calcStreak, calcMoneySaved } from "./presets.js";
 import { createSession, requireAuth, requireAdmin, normalizePhone, getLastActive, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS } from "./auth.js";
 import { randomQuote } from "./data-quotes.js";
@@ -15,33 +15,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-await initDb();
 const auth = requireAuth();
 const adminAuth = requireAdmin();
 
-// -- Public: presets, crisis resources -------------------------------------
+function dbError(res, error) {
+  console.error("[db]", error.message);
+  res.status(500).json({ error: "Something went wrong. Please try again." });
+}
+
+async function getUserById(id) {
+  return supabase.from("users").select("*").eq("id", id).maybeSingle();
+}
+
 app.get("/api/presets", (req, res) => {
   res.json(Object.values(PRESETS));
 });
 
-// Crisis resources are ALWAYS public — never gated behind login or a paywall
 app.get("/api/crisis-resources", (req, res) => {
   res.json(CRISIS_RESOURCES);
 });
 
-// -- Auth: phone number + PIN -------------------------------------------
-// Web "remember this device" is just a long-lived session token kept in the
-// browser's localStorage (see server/auth.js) — no SMS/email step needed to
-// stay logged in on the same browser.
-
-// Lets the frontend know whether to show a login PIN box or a "create a PIN" flow
 app.get("/api/auth/check-phone", async (req, res) => {
   const { phone } = req.query;
   if (!phone) return res.status(400).json({ error: "phone required" });
-  await db.read();
   const normalized = normalizePhone(phone);
-  const exists = db.data.users.some((u) => u.phone === normalized);
-  res.json({ exists });
+  const { data, error } = await supabase.from("users").select("id").eq("phone", normalized).maybeSingle();
+  if (error) return dbError(res, error);
+  res.json({ exists: Boolean(data) });
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -50,11 +50,10 @@ app.post("/api/auth/register", async (req, res) => {
   if (!PIN_PATTERN.test(String(pin))) return res.status(400).json({ error: "PIN must be 4-6 digits" });
   if (ageConfirmed !== true) return res.status(400).json({ error: "You must confirm you are 18 or older" });
 
-  await db.read();
   const normalized = normalizePhone(phone);
-  if (db.data.users.some((u) => u.phone === normalized)) {
-    return res.status(409).json({ error: "This phone number is already registered. Try logging in instead." });
-  }
+  const { data: existing, error: lookupError } = await supabase.from("users").select("id").eq("phone", normalized).maybeSingle();
+  if (lookupError) return dbError(res, lookupError);
+  if (existing) return res.status(409).json({ error: "This phone number is already registered. Try logging in instead." });
 
   const user = {
     id: nanoid(10),
@@ -65,8 +64,8 @@ app.post("/api/auth/register", async (req, res) => {
     lockedUntil: null,
     createdAt: new Date().toISOString(),
   };
-  db.data.users.push(user);
-  await db.write();
+  const { error: insertError } = await supabase.from("users").insert(user);
+  if (insertError) return dbError(res, insertError);
 
   const token = await createSession(user.id);
   res.status(201).json({ token, userId: user.id, isNewUser: true, onboarded: false });
@@ -76,9 +75,9 @@ app.post("/api/auth/login", async (req, res) => {
   const { phone, pin } = req.body;
   if (!phone || !pin) return res.status(400).json({ error: "phone and pin required" });
 
-  await db.read();
   const normalized = normalizePhone(phone);
-  const user = db.data.users.find((u) => u.phone === normalized);
+  const { data: user, error } = await supabase.from("users").select("*").eq("phone", normalized).maybeSingle();
+  if (error) return dbError(res, error);
   if (!user) return res.status(404).json({ error: "No account found for this number. Please sign up first." });
 
   if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
@@ -87,29 +86,23 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   if (!verifyPin(pin, user.pinHash)) {
-    user.failedPinAttempts = (user.failedPinAttempts || 0) + 1;
-    if (user.failedPinAttempts >= MAX_FAILED_ATTEMPTS) {
-      user.lockedUntil = new Date(Date.now() + LOCKOUT_MS).toISOString();
-      user.failedPinAttempts = 0;
-      await db.write();
+    const failedPinAttempts = (user.failedPinAttempts || 0) + 1;
+    if (failedPinAttempts >= MAX_FAILED_ATTEMPTS) {
+      const lockedUntil = new Date(Date.now() + LOCKOUT_MS).toISOString();
+      await supabase.from("users").update({ failedPinAttempts: 0, lockedUntil }).eq("id", user.id);
       return res.status(429).json({ error: "Too many incorrect attempts. Try again in 15 minutes." });
     }
-    await db.write();
-    const remaining = MAX_FAILED_ATTEMPTS - user.failedPinAttempts;
+    await supabase.from("users").update({ failedPinAttempts }).eq("id", user.id);
+    const remaining = MAX_FAILED_ATTEMPTS - failedPinAttempts;
     return res.status(401).json({ error: `Incorrect PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} left.` });
   }
 
-  user.failedPinAttempts = 0;
-  user.lockedUntil = null;
-  await db.write();
+  await supabase.from("users").update({ failedPinAttempts: 0, lockedUntil: null }).eq("id", user.id);
 
   const token = await createSession(user.id);
   res.json({ token, userId: user.id, isNewUser: false, onboarded: Boolean(user.addiction) });
 });
 
-// -- Users (protected) ----------------------------------------------------
-// Complete/update the quit-journey profile for the logged-in user
-// Never send the PIN hash (or other internal bookkeeping) back to the client
 function sanitizeUser(user) {
   const { pinHash, failedPinAttempts, lockedUntil, ...safe } = user;
   return safe;
@@ -120,27 +113,27 @@ app.post("/api/users/me/profile", auth, async (req, res) => {
   if (!addiction || !PRESETS[addiction]) {
     return res.status(400).json({ error: "Invalid or missing addiction type" });
   }
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const updates = {
+    addiction,
+    quitDate: quitDate || new Date().toISOString(),
+    weeklySpend: Number(weeklySpend) || 0,
+    goalDays: Number(goalDays) || 21,
+  };
+  const { data: user, error } = await supabase.from("users").update(updates).eq("id", req.userId).select().maybeSingle();
+  if (error) return dbError(res, error);
   if (!user) return res.status(404).json({ error: "User not found" });
-
-  user.addiction = addiction;
-  user.quitDate = quitDate || new Date().toISOString();
-  user.weeklySpend = Number(weeklySpend) || 0;
-  user.goalDays = Number(goalDays) || 21;
-  await db.write();
   res.json(sanitizeUser(user));
 });
 
 app.get("/api/users/me", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error } = await getUserById(req.userId);
+  if (error) return dbError(res, error);
   if (!user) return res.status(404).json({ error: "User not found" });
   if (!user.addiction) return res.json({ ...sanitizeUser(user), onboarded: false });
 
   const streak = calcStreak(user.quitDate);
   const moneySaved = calcMoneySaved(user.quitDate, user.weeklySpend);
-  const myInstitution = db.data.institutions.find((i) => i.createdBy === user.id);
+  const { data: myInstitution } = await supabase.from("institutions").select("id,name,status").eq("createdBy", user.id).maybeSingle();
   res.json({
     ...sanitizeUser(user),
     onboarded: true,
@@ -154,33 +147,33 @@ app.get("/api/users/me", auth, async (req, res) => {
   });
 });
 
-// Reset a relapse: move quit date back to today
 app.post("/api/users/me/relapse", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error } = await supabase
+    .from("users")
+    .update({ quitDate: new Date().toISOString() })
+    .eq("id", req.userId)
+    .select()
+    .maybeSingle();
+  if (error) return dbError(res, error);
   if (!user) return res.status(404).json({ error: "User not found" });
-  user.quitDate = new Date().toISOString();
-  await db.write();
   res.json(sanitizeUser(user));
 });
 
-// Daily reminder preference — actual delivery is handled client-side via the
-// browser Notification API while the app is open (see the note in README);
-// this just persists the preference so it survives across sessions/devices.
 app.post("/api/users/me/reminders", auth, async (req, res) => {
   const { enabled, time } = req.body;
   if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled (boolean) required" });
   if (time && !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: "time must be in HH:MM format" });
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+
+  const { data: user, error: lookupError } = await getUserById(req.userId);
+  if (lookupError) return dbError(res, lookupError);
   if (!user) return res.status(404).json({ error: "User not found" });
-  user.reminderOptIn = enabled;
-  user.reminderTime = time || user.reminderTime || "19:00";
-  await db.write();
-  res.json({ ok: true, reminderOptIn: user.reminderOptIn, reminderTime: user.reminderTime });
+
+  const updates = { reminderOptIn: enabled, reminderTime: time || user.reminderTime || "19:00" };
+  const { error } = await supabase.from("users").update(updates).eq("id", req.userId);
+  if (error) return dbError(res, error);
+  res.json({ ok: true, ...updates });
 });
 
-// -- Daily check-ins (protected) -----------------------------------------
 app.post("/api/checkins", auth, async (req, res) => {
   const { mood, cravingLevel, note } = req.body;
   const entry = {
@@ -191,20 +184,17 @@ app.post("/api/checkins", auth, async (req, res) => {
     note: note || "",
     date: new Date().toISOString(),
   };
-  db.data.checkins.push(entry);
-  await db.write();
+  const { error } = await supabase.from("checkins").insert(entry);
+  if (error) return dbError(res, error);
   res.status(201).json(entry);
 });
 
 app.get("/api/checkins/me", auth, async (req, res) => {
-  await db.read();
-  const entries = db.data.checkins
-    .filter((c) => c.userId === req.userId)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  res.json(entries);
+  const { data, error } = await supabase.from("checkins").select("*").eq("userId", req.userId).order("date", { ascending: false });
+  if (error) return dbError(res, error);
+  res.json(data);
 });
 
-// -- Journal (protected) -------------------------------------------------
 app.post("/api/journal", auth, async (req, res) => {
   const { text, trigger } = req.body;
   if (!text) return res.status(400).json({ error: "text required" });
@@ -215,35 +205,31 @@ app.post("/api/journal", auth, async (req, res) => {
     trigger: trigger || "",
     date: new Date().toISOString(),
   };
-  db.data.journal.push(entry);
-  await db.write();
+  const { error } = await supabase.from("journal").insert(entry);
+  if (error) return dbError(res, error);
   res.status(201).json(entry);
 });
 
 app.get("/api/journal/me", auth, async (req, res) => {
-  await db.read();
-  const entries = db.data.journal
-    .filter((j) => j.userId === req.userId)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  res.json(entries);
+  const { data, error } = await supabase.from("journal").select("*").eq("userId", req.userId).order("date", { ascending: false });
+  if (error) return dbError(res, error);
+  res.json(data);
 });
 
-// -- Pro tier: M-Pesa Daraja billing --------------------------------------
 app.get("/api/pro/plan", (req, res) => {
   res.json({ ...PRO_PLAN, mockMode: isMockMode });
 });
 
 app.get("/api/pro/status", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error } = await getUserById(req.userId);
+  if (error) return dbError(res, error);
   if (!user) return res.status(404).json({ error: "User not found" });
   res.json({ isPro: isProActive(user), proExpiresAt: user.proExpiresAt || null });
 });
 
-// Kick off an STK push prompt to the user's phone for one Pro billing cycle
 app.post("/api/pro/checkout", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error: lookupError } = await getUserById(req.userId);
+  if (lookupError) return dbError(res, lookupError);
   if (!user) return res.status(404).json({ error: "User not found" });
 
   try {
@@ -262,12 +248,9 @@ app.post("/api/pro/checkout", auth, async (req, res) => {
       status: "pending",
       createdAt: new Date().toISOString(),
     };
-    db.data.payments.push(payment);
-    await db.write();
+    const { error: insertError } = await supabase.from("payments").insert(payment);
+    if (insertError) return dbError(res, insertError);
 
-    // In mock mode, simulate Safaricom's callback arriving a few seconds
-    // later so the full pending -> paid flow can be tested without real
-    // credentials (see server/daraja.js).
     if (mock) {
       simulateMockCallback(checkoutRequestId, async (result) => {
         await applyPaymentResult(result);
@@ -285,9 +268,6 @@ app.post("/api/pro/checkout", auth, async (req, res) => {
   }
 });
 
-// Safaricom calls this URL asynchronously once the customer completes (or
-// cancels) the STK push prompt. Must stay public — Safaricom's servers call
-// it directly, with no user session.
 app.post("/api/pro/callback", async (req, res) => {
   try {
     const stk = req.body?.Body?.stkCallback;
@@ -300,54 +280,54 @@ app.post("/api/pro/callback", async (req, res) => {
   } catch (err) {
     console.error("Daraja callback error:", err);
   }
-  // Safaricom expects a 200 with this exact shape regardless of outcome
   res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 });
 
 async function applyPaymentResult({ checkoutRequestId, resultCode, resultDesc }) {
-  await db.read();
-  const payment = db.data.payments.find((p) => p.checkoutRequestId === checkoutRequestId);
-  if (!payment) return;
+  const { data: payment, error } = await supabase.from("payments").select("*").eq("checkoutRequestId", checkoutRequestId).maybeSingle();
+  if (error || !payment) return;
 
-  payment.status = resultCode === 0 ? "paid" : "failed";
-  payment.resultDesc = resultDesc;
-  payment.resolvedAt = new Date().toISOString();
+  const paymentUpdates = {
+    status: resultCode === 0 ? "paid" : "failed",
+    resultDesc,
+    resolvedAt: new Date().toISOString(),
+  };
+  await supabase.from("payments").update(paymentUpdates).eq("id", payment.id);
 
   if (resultCode === 0) {
-    const user = db.data.users.find((u) => u.id === payment.userId);
+    const { data: user } = await getUserById(payment.userId);
     if (user) {
       const now = new Date();
-      // Extend from current expiry if still active, else from now
       const base = user.proExpiresAt && new Date(user.proExpiresAt) > now ? new Date(user.proExpiresAt) : now;
       base.setDate(base.getDate() + PRO_PLAN.periodDays);
-      user.isPro = true;
-      user.proExpiresAt = base.toISOString();
+      await supabase.from("users").update({ isPro: true, proExpiresAt: base.toISOString() }).eq("id", user.id);
     }
   }
-  await db.write();
 }
 
-// Lets the client poll while waiting for the callback (especially useful in
-// mock mode, and as a fallback if a real Safaricom callback is delayed)
 app.get("/api/pro/checkout/:checkoutRequestId", auth, async (req, res) => {
-  await db.read();
-  const payment = db.data.payments.find(
-    (p) => p.checkoutRequestId === req.params.checkoutRequestId && p.userId === req.userId
-  );
+  const { data: payment, error } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("checkoutRequestId", req.params.checkoutRequestId)
+    .eq("userId", req.userId)
+    .maybeSingle();
+  if (error) return dbError(res, error);
   if (!payment) return res.status(404).json({ error: "Payment not found" });
   res.json(payment);
 });
 
-// -- Pro-only: advanced analytics -----------------------------------------
 app.get("/api/analytics", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error: userError } = await getUserById(req.userId);
+  if (userError) return dbError(res, userError);
   if (!user) return res.status(404).json({ error: "User not found" });
   if (!isProActive(user)) {
     return res.status(402).json({ error: "This is a Pro feature", upgradeRequired: true });
   }
 
-  const checkins = db.data.checkins.filter((c) => c.userId === req.userId);
+  const { data: checkins, error } = await supabase.from("checkins").select("*").eq("userId", req.userId);
+  if (error) return dbError(res, error);
+
   const byDayOfWeek = Array(7).fill(0).map(() => ({ count: 0, totalCraving: 0 }));
   checkins.forEach((c) => {
     const day = new Date(c.date).getDay();
@@ -376,15 +356,11 @@ app.get("/api/analytics", auth, async (req, res) => {
   });
 });
 
-// -- Quotes (protected — tailored to the user's addiction) ----------------
-// Random each time the dashboard loads (including on every login), skipping
-// an immediate repeat of whatever was shown last so it doesn't feel stuck
-// on the same line.
-const lastQuoteMap = new Map(); // userId -> quote text
+const lastQuoteMap = new Map();
 
 app.get("/api/quotes/daily", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error } = await supabase.from("users").select("addiction").eq("id", req.userId).maybeSingle();
+  if (error) return dbError(res, error);
   if (!user?.addiction) return res.status(400).json({ error: "Complete onboarding first" });
   const quote = randomQuote(user.addiction, lastQuoteMap.get(req.userId));
   lastQuoteMap.set(req.userId, quote.text);
@@ -392,76 +368,67 @@ app.get("/api/quotes/daily", auth, async (req, res) => {
 });
 
 app.get("/api/quotes/random", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error } = await supabase.from("users").select("addiction").eq("id", req.userId).maybeSingle();
+  if (error) return dbError(res, error);
   if (!user?.addiction) return res.status(400).json({ error: "Complete onboarding first" });
   const quote = randomQuote(user.addiction, lastQuoteMap.get(req.userId));
   lastQuoteMap.set(req.userId, quote.text);
   res.json(quote);
 });
 
-// -- Hobby suggestions (protected) ----------------------------------------
 app.get("/api/hobbies", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error } = await supabase.from("users").select("addiction").eq("id", req.userId).maybeSingle();
+  if (error) return dbError(res, error);
   if (!user?.addiction) return res.status(400).json({ error: "Complete onboarding first" });
   res.json(weeklyHobbies(user.addiction));
 });
 
-// -- Support providers -----------------------------------------------------
 app.get("/api/providers/specialties", (req, res) => res.json(PROVIDER_SPECIALTIES));
 
-// Apply to become a verified support provider (counselor, chaplain, coach, etc.)
 app.post("/api/providers/apply", auth, async (req, res) => {
   const { displayName, bio, specialty, credentials } = req.body;
   if (!displayName || !bio || !specialty) {
     return res.status(400).json({ error: "displayName, bio, and specialty are required" });
   }
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
-  if (!user) return res.status(404).json({ error: "User not found" });
-
-  user.providerStatus = "pending";
-  user.providerDisplayName = displayName;
-  user.providerBio = bio;
-  user.providerSpecialty = specialty;
-  user.providerCredentials = credentials || "";
-  user.providerAppliedAt = new Date().toISOString();
-  await db.write();
+  const updates = {
+    providerStatus: "pending",
+    providerDisplayName: displayName,
+    providerBio: bio,
+    providerSpecialty: specialty,
+    providerCredentials: credentials || "",
+    providerAppliedAt: new Date().toISOString(),
+  };
+  const { error } = await supabase.from("users").update(updates).eq("id", req.userId);
+  if (error) return dbError(res, error);
   res.json({ ok: true, status: "pending" });
 });
 
-// Public directory of verified providers (no phone numbers or other private data)
 app.get("/api/providers", async (req, res) => {
-  await db.read();
   const { specialty } = req.query;
-  let providers = db.data.users.filter((u) => u.providerStatus === "verified");
-  if (specialty) providers = providers.filter((p) => p.providerSpecialty === specialty);
-  res.json(
-    providers.map((p) => ({
-      id: p.id,
-      displayName: p.providerDisplayName,
-      bio: p.providerBio,
-      specialty: p.providerSpecialty,
-    }))
-  );
+  let query = supabase.from("users").select("id,providerDisplayName,providerBio,providerSpecialty").eq("providerStatus", "verified");
+  if (specialty) query = query.eq("providerSpecialty", specialty);
+  const { data, error } = await query;
+  if (error) return dbError(res, error);
+  res.json(data.map((p) => ({ id: p.id, displayName: p.providerDisplayName, bio: p.providerBio, specialty: p.providerSpecialty })));
 });
 
 app.get("/api/providers/:id", async (req, res) => {
-  await db.read();
-  const p = db.data.users.find((u) => u.id === req.params.id && u.providerStatus === "verified");
+  const { data: p, error } = await supabase
+    .from("users")
+    .select("id,providerDisplayName,providerBio,providerSpecialty,providerStatus")
+    .eq("id", req.params.id)
+    .eq("providerStatus", "verified")
+    .maybeSingle();
+  if (error) return dbError(res, error);
   if (!p) return res.status(404).json({ error: "Provider not found" });
   res.json({ id: p.id, displayName: p.providerDisplayName, bio: p.providerBio, specialty: p.providerSpecialty });
 });
 
-// -- Institutions -----------------------------------------------------------
 app.get("/api/institutions/types", (req, res) => res.json(INSTITUTION_TYPES));
 
-// Register an institution (church, mosque, NACADA center, rehab, employer, NGO)
 app.post("/api/institutions/apply", auth, async (req, res) => {
   const { name, type, contactPhone } = req.body;
   if (!name || !type) return res.status(400).json({ error: "name and type are required" });
-  await db.read();
 
   const institution = {
     id: nanoid(10),
@@ -473,28 +440,29 @@ app.post("/api/institutions/apply", auth, async (req, res) => {
     inviteCode: nanoid(8).toUpperCase(),
     createdAt: new Date().toISOString(),
   };
-  db.data.institutions.push(institution);
-  await db.write();
+  const { error } = await supabase.from("institutions").insert(institution);
+  if (error) return dbError(res, error);
   res.status(201).json(institution);
 });
 
-// The institution an admin user created/manages, and its cohort's aggregate progress
 app.get("/api/institutions/me", auth, async (req, res) => {
-  await db.read();
-  const institution = db.data.institutions.find((i) => i.createdBy === req.userId);
+  const { data: institution, error } = await supabase.from("institutions").select("*").eq("createdBy", req.userId).maybeSingle();
+  if (error) return dbError(res, error);
   if (!institution) return res.status(404).json({ error: "No institution found for this account" });
   res.json(institution);
 });
 
 app.get("/api/institutions/me/dashboard", auth, async (req, res) => {
-  await db.read();
-  const institution = db.data.institutions.find((i) => i.createdBy === req.userId);
+  const { data: institution, error } = await supabase.from("institutions").select("*").eq("createdBy", req.userId).maybeSingle();
+  if (error) return dbError(res, error);
   if (!institution) return res.status(404).json({ error: "No institution found for this account" });
   if (institution.status !== "verified") {
     return res.status(403).json({ error: "Institution is not verified yet", status: institution.status });
   }
 
-  const members = db.data.users.filter((u) => u.institutionId === institution.id);
+  const { data: members, error: membersError } = await supabase.from("users").select("addiction,quitDate,goalDays").eq("institutionId", institution.id);
+  if (membersError) return dbError(res, membersError);
+
   const byAddiction = {};
   let totalStreak = 0;
   let goalReachedCount = 0;
@@ -506,7 +474,6 @@ app.get("/api/institutions/me/dashboard", auth, async (req, res) => {
     if (streak >= (m.goalDays || 21)) goalReachedCount += 1;
   });
 
-  // Aggregated and anonymized ONLY — never individual names, phones, or journal content
   res.json({
     institution: { name: institution.name, type: institution.type, inviteCode: institution.inviteCode },
     memberCount: members.length,
@@ -516,29 +483,31 @@ app.get("/api/institutions/me/dashboard", auth, async (req, res) => {
   });
 });
 
-// Join an institution's cohort with an invite code
 app.post("/api/institutions/join", auth, async (req, res) => {
   const { inviteCode } = req.body;
   if (!inviteCode) return res.status(400).json({ error: "inviteCode required" });
-  await db.read();
-  const institution = db.data.institutions.find(
-    (i) => i.inviteCode === inviteCode.toUpperCase() && i.status === "verified"
-  );
+  const { data: institution, error } = await supabase
+    .from("institutions")
+    .select("*")
+    .eq("inviteCode", inviteCode.toUpperCase())
+    .eq("status", "verified")
+    .maybeSingle();
+  if (error) return dbError(res, error);
   if (!institution) return res.status(404).json({ error: "Invalid or unverified invite code" });
 
-  const user = db.data.users.find((u) => u.id === req.userId);
-  user.institutionId = institution.id;
-  await db.write();
+  const { error: updateError } = await supabase.from("users").update({ institutionId: institution.id }).eq("id", req.userId);
+  if (updateError) return dbError(res, updateError);
   res.json({ ok: true, institutionName: institution.name });
 });
 
-// -- Admin: review provider and institution applications -------------------
-// No admin UI yet — call these with the ADMIN_SECRET header (see server/auth.js)
 app.get("/api/admin/providers/pending", adminAuth, async (req, res) => {
-  await db.read();
-  const pending = db.data.users
-    .filter((u) => u.providerStatus === "pending")
-    .map((u) => ({
+  const { data, error } = await supabase
+    .from("users")
+    .select("id,phone,providerDisplayName,providerBio,providerSpecialty,providerCredentials,providerAppliedAt")
+    .eq("providerStatus", "pending");
+  if (error) return dbError(res, error);
+  res.json(
+    data.map((u) => ({
       id: u.id,
       phone: u.phone,
       displayName: u.providerDisplayName,
@@ -546,43 +515,37 @@ app.get("/api/admin/providers/pending", adminAuth, async (req, res) => {
       specialty: u.providerSpecialty,
       credentials: u.providerCredentials,
       appliedAt: u.providerAppliedAt,
-    }));
-  res.json(pending);
+    }))
+  );
 });
 
 app.post("/api/admin/providers/:userId/verify", adminAuth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.params.userId);
-  if (!user) return res.status(404).json({ error: "User not found" });
-  user.providerStatus = "verified";
-  await db.write();
+  const { data, error } = await supabase.from("users").update({ providerStatus: "verified" }).eq("id", req.params.userId).select().maybeSingle();
+  if (error) return dbError(res, error);
+  if (!data) return res.status(404).json({ error: "User not found" });
   res.json({ ok: true });
 });
 
 app.post("/api/admin/providers/:userId/reject", adminAuth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.params.userId);
-  if (!user) return res.status(404).json({ error: "User not found" });
-  user.providerStatus = "rejected";
-  await db.write();
+  const { data, error } = await supabase.from("users").update({ providerStatus: "rejected" }).eq("id", req.params.userId).select().maybeSingle();
+  if (error) return dbError(res, error);
+  if (!data) return res.status(404).json({ error: "User not found" });
   res.json({ ok: true });
 });
 
 app.get("/api/admin/institutions/pending", adminAuth, async (req, res) => {
-  await db.read();
-  res.json(db.data.institutions.filter((i) => i.status === "pending"));
+  const { data, error } = await supabase.from("institutions").select("*").eq("status", "pending");
+  if (error) return dbError(res, error);
+  res.json(data);
 });
 
 app.post("/api/admin/institutions/:id/verify", adminAuth, async (req, res) => {
-  await db.read();
-  const institution = db.data.institutions.find((i) => i.id === req.params.id);
+  const { data: institution, error } = await supabase.from("institutions").update({ status: "verified" }).eq("id", req.params.id).select().maybeSingle();
+  if (error) return dbError(res, error);
   if (!institution) return res.status(404).json({ error: "Institution not found" });
-  institution.status = "verified";
-  await db.write();
   res.json({ ok: true, inviteCode: institution.inviteCode });
 });
 
-// -- 1:1 messaging with verified support providers (Pro feature) -----------
 function conversationId(a, b) {
   return [a, b].sort().join("_");
 }
@@ -590,18 +553,16 @@ function conversationId(a, b) {
 app.post("/api/messages", auth, async (req, res) => {
   const { toUserId, text } = req.body;
   if (!toUserId || !text?.trim()) return res.status(400).json({ error: "toUserId and text required" });
-  await db.read();
 
-  const sender = db.data.users.find((u) => u.id === req.userId);
-  const recipient = db.data.users.find((u) => u.id === toUserId);
+  const { data: sender, error: senderError } = await getUserById(req.userId);
+  if (senderError) return dbError(res, senderError);
+  const { data: recipient, error: recipientError } = await getUserById(toUserId);
+  if (recipientError) return dbError(res, recipientError);
   if (!recipient) return res.status(404).json({ error: "Recipient not found" });
 
   const senderIsVerifiedProvider = sender.providerStatus === "verified";
   const recipientIsVerifiedProvider = recipient.providerStatus === "verified";
 
-  // Starting a conversation with a provider requires Pro. Providers can
-  // always reply for free, and a provider messaging another provider isn't
-  // gated either — the Pro gate is specifically "get 1:1 access to a provider".
   if (recipientIsVerifiedProvider && !senderIsVerifiedProvider && !isProActive(sender)) {
     return res.status(402).json({ error: "Messaging support providers is a Pro feature", upgradeRequired: true });
   }
@@ -614,44 +575,97 @@ app.post("/api/messages", auth, async (req, res) => {
     text: text.trim(),
     date: new Date().toISOString(),
   };
-  db.data.messages.push(message);
-  await db.write();
+  const { error } = await supabase.from("messages").insert(message);
+  if (error) return dbError(res, error);
   res.status(201).json(message);
 });
 
 app.get("/api/messages/:otherUserId", auth, async (req, res) => {
-  await db.read();
   const cid = conversationId(req.userId, req.params.otherUserId);
-  const thread = db.data.messages.filter((m) => m.conversationId === cid).sort((a, b) => new Date(a.date) - new Date(b.date));
-  res.json(thread);
+  const { data, error } = await supabase.from("messages").select("*").eq("conversationId", cid).order("date", { ascending: true });
+  if (error) return dbError(res, error);
+  res.json(data);
 });
 
-// For a provider's inbox: list everyone who has messaged them, most recent first
 app.get("/api/providers/me/conversations", auth, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find((u) => u.id === req.userId);
+  const { data: user, error: userError } = await supabase.from("users").select("providerStatus").eq("id", req.userId).maybeSingle();
+  if (userError) return dbError(res, userError);
   if (user?.providerStatus !== "verified") return res.status(403).json({ error: "Not a verified provider" });
 
-  const myMessages = db.data.messages.filter((m) => m.fromUserId === req.userId || m.toUserId === req.userId);
+  const { data: myMessages, error } = await supabase
+    .from("messages")
+    .select("*")
+    .or(`fromUserId.eq.${req.userId},toUserId.eq.${req.userId}`);
+  if (error) return dbError(res, error);
+
   const partnerIds = [...new Set(myMessages.map((m) => (m.fromUserId === req.userId ? m.toUserId : m.fromUserId)))];
 
-  const conversations = partnerIds.map((pid) => {
-    const thread = myMessages.filter((m) => m.fromUserId === pid || m.toUserId === pid);
-    const last = thread.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-    return { userId: pid, lastMessage: last.text, lastDate: last.date };
-  }).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+  const conversations = partnerIds
+    .map((pid) => {
+      const thread = myMessages.filter((m) => m.fromUserId === pid || m.toUserId === pid);
+      const last = thread.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+      return { userId: pid, lastMessage: last.text, lastDate: last.date };
+    })
+    .sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
 
   res.json(conversations);
 });
 
+app.post("/api/feedback", auth, async (req, res) => {
+  const { category, message } = req.body;
+  const validCategories = ["suggestion", "compliment", "complaint", "help"];
+  if (!validCategories.includes(category)) return res.status(400).json({ error: "Invalid category" });
+  if (!message?.trim()) return res.status(400).json({ error: "message required" });
+
+  const { data: user } = await supabase.from("users").select("phone").eq("id", req.userId).maybeSingle();
+  const entry = {
+    id: nanoid(10),
+    userId: req.userId,
+    phone: user?.phone || null,
+    category,
+    message: message.trim(),
+    status: "open",
+    date: new Date().toISOString(),
+  };
+  const { error } = await supabase.from("feedback").insert(entry);
+  if (error) return dbError(res, error);
+  res.status(201).json({ ok: true });
+});
+
+app.get("/api/admin/feedback", adminAuth, async (req, res) => {
+  const { data, error } = await supabase.from("feedback").select("*").order("date", { ascending: false });
+  if (error) return dbError(res, error);
+  res.json(data);
+});
+
+app.post("/api/admin/feedback/:id/resolve", adminAuth, async (req, res) => {
+  const { data, error } = await supabase.from("feedback").update({ status: "resolved" }).eq("id", req.params.id).select().maybeSingle();
+  if (error) return dbError(res, error);
+  if (!data) return res.status(404).json({ error: "Not found" });
+  res.json({ ok: true });
+});
+
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// -- Admin: platform stats & user list --------------------------------------
-// The owner's view of how the app is doing: signups, active users, Pro
-// revenue, and provider/institution pipeline — all in one call.
 app.get("/api/admin/stats", adminAuth, async (req, res) => {
-  await db.read();
-  const users = db.data.users;
+  const [
+    { data: users, error: usersError },
+    { data: institutions, error: instError },
+    { data: checkins, error: checkinsError },
+    { data: journal, error: journalError },
+    { data: messages, error: messagesError },
+    { data: feedback, error: feedbackError },
+  ] = await Promise.all([
+    supabase.from("users").select("*"),
+    supabase.from("institutions").select("status"),
+    supabase.from("checkins").select("id"),
+    supabase.from("journal").select("id"),
+    supabase.from("messages").select("id"),
+    supabase.from("feedback").select("status"),
+  ]);
+  const firstError = usersError || instError || checkinsError || journalError || messagesError || feedbackError;
+  if (firstError) return dbError(res, firstError);
+
   const now = new Date();
   const dayMs = 86400000;
 
@@ -669,9 +683,8 @@ app.get("/api/admin/stats", adminAuth, async (req, res) => {
   users.forEach((u) => { if (u.providerStatus && providerCounts[u.providerStatus] !== undefined) providerCounts[u.providerStatus] += 1; });
 
   const institutionCounts = { verified: 0, pending: 0 };
-  db.data.institutions.forEach((i) => { if (institutionCounts[i.status] !== undefined) institutionCounts[i.status] += 1; });
+  institutions.forEach((i) => { if (institutionCounts[i.status] !== undefined) institutionCounts[i.status] += 1; });
 
-  // Signups per day for the last 7 days, oldest first — enough for a simple trend
   const signupsByDay = [];
   for (let i = 6; i >= 0; i--) {
     const dayStart = new Date(now.getTime() - i * dayMs);
@@ -690,31 +703,32 @@ app.get("/api/admin/stats", adminAuth, async (req, res) => {
     estimatedMonthlyRevenueKes: proUsers.length * PRO_PLAN.priceKes,
     providerCounts,
     institutionCounts,
-    totalInstitutions: db.data.institutions.length,
-    totalCheckins: db.data.checkins.length,
-    totalJournalEntries: db.data.journal.length,
-    totalMessages: db.data.messages.length,
+    totalInstitutions: institutions.length,
+    totalCheckins: checkins.length,
+    totalJournalEntries: journal.length,
+    totalMessages: messages.length,
+    openFeedbackCount: feedback.filter((f) => f.status === "open").length,
     signupsByDay,
     daraja: { mockMode: isMockMode },
   });
 });
 
-// Full user list for the owner — includes phone numbers (needed to actually
-// run the business), but never journal or message content.
 app.get("/api/admin/users", adminAuth, async (req, res) => {
-  await db.read();
-  const users = db.data.users.map((u) => ({
-    id: u.id,
-    phone: u.phone,
-    addiction: u.addiction || null,
-    streak: u.addiction ? calcStreak(u.quitDate) : null,
-    isPro: isProActive(u),
-    providerStatus: u.providerStatus || "none",
-    institutionId: u.institutionId || null,
-    createdAt: u.createdAt,
-    lastActiveAt: getLastActive(u.id),
-  })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(users);
+  const { data: users, error } = await supabase.from("users").select("*").order("createdAt", { ascending: false });
+  if (error) return dbError(res, error);
+  res.json(
+    users.map((u) => ({
+      id: u.id,
+      phone: u.phone,
+      addiction: u.addiction || null,
+      streak: u.addiction ? calcStreak(u.quitDate) : null,
+      isPro: isProActive(u),
+      providerStatus: u.providerStatus || "none",
+      institutionId: u.institutionId || null,
+      createdAt: u.createdAt,
+      lastActiveAt: getLastActive(u.id),
+    }))
+  );
 });
 
 const PORT = process.env.PORT || 4000;

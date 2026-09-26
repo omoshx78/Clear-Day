@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api.js";
 
 const MEETINGS = [
   {
@@ -27,6 +28,12 @@ const CALENDAR = [
 ];
 
 export default function Resources() {
+  const [crisisResources, setCrisisResources] = useState([]);
+
+  useEffect(() => {
+    api.getCrisisResources().then(setCrisisResources).catch(() => {});
+  }, []);
+
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-6 pb-24">
       <h1 className="text-2xl font-bold text-ink">Resources</h1>
@@ -63,6 +70,23 @@ export default function Resources() {
       </div>
 
       <div>
+        <p className="text-sm font-semibold text-ink mb-3">Crisis support — free, 24/7 where noted</p>
+        <div className="space-y-3">
+          {crisisResources.map((r) => (
+            <a
+              key={r.name}
+              href={`tel:${r.tel}`}
+              className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition"
+            >
+              <p className="font-semibold text-ink">{r.name}</p>
+              <p className="text-brand-700 font-medium text-sm">{r.number}</p>
+              <p className="text-xs text-muted mt-1">{r.description}</p>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div>
         <p className="text-sm font-semibold text-ink mb-3">Talk to someone</p>
         <div className="space-y-3">
           <Link
@@ -72,9 +96,13 @@ export default function Resources() {
             <p className="font-semibold text-ink">Message a support provider</p>
             <p className="text-sm text-muted mt-1">Verified counselors, chaplains, and coaches on ClearDay</p>
           </Link>
-          <p className="text-xs text-faint text-center">
-            In a crisis? Use the "Need help now?" button on any screen for free, immediate helplines.
-          </p>
+          <Link
+            to="/contact"
+            className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition"
+          >
+            <p className="font-semibold text-ink">Contact the ClearDay team</p>
+            <p className="text-sm text-muted mt-1">Suggestions, compliments, complaints, or general help</p>
+          </Link>
         </div>
       </div>
     </div>

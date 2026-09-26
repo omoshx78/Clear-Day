@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
+import BackBar from "../components/BackBar.jsx";
 
 const ADDICTION_LABELS = { smoking: "Smoking", alcohol: "Alcohol", gambling: "Gambling / Betting" };
 
@@ -23,6 +24,7 @@ export default function InstitutionDashboard() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+      <BackBar fallback="/support" />
       <div>
         <h1 className="text-2xl font-bold text-ink">{data.institution.name}</h1>
         <p className="text-sm text-muted">Aggregated, anonymized member progress</p>

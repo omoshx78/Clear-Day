@@ -16,6 +16,7 @@ function StatCard({ label, value, sub }) {
 export default function AdminDashboard({ onLogout }) {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState(null);
+  const [feedback, setFeedback] = useState(null);
   const [pendingProviders, setPendingProviders] = useState([]);
   const [pendingInstitutions, setPendingInstitutions] = useState([]);
   const [error, setError] = useState("");
@@ -38,10 +39,16 @@ export default function AdminDashboard({ onLogout }) {
 
   useEffect(() => { loadAll(); }, []);
   useEffect(() => { if (tab === "users" && !users) adminApi.getUsers().then(setUsers).catch((err) => setError(err.message)); }, [tab]);
+  useEffect(() => { if (tab === "feedback") adminApi.getFeedback().then(setFeedback).catch((err) => setError(err.message)); }, [tab]);
 
   async function approveProvider(id) { await adminApi.verifyProvider(id); loadAll(); }
   async function rejectProvider(id) { await adminApi.rejectProvider(id); loadAll(); }
   async function approveInstitution(id) { await adminApi.verifyInstitution(id); loadAll(); }
+  async function resolveFeedback(id) {
+    await adminApi.resolveFeedback(id);
+    setFeedback((prev) => prev.map((f) => (f.id === id ? { ...f, status: "resolved" } : f)));
+    loadAll();
+  }
 
   if (error) return <p className="max-w-2xl mx-auto px-4 py-12 text-red-500">{error}</p>;
   if (!stats) return <p className="max-w-2xl mx-auto px-4 py-12 text-faint">Loading...</p>;
@@ -57,7 +64,7 @@ export default function AdminDashboard({ onLogout }) {
       </div>
 
       <div className="flex gap-1 mb-6">
-        {[["overview", "Overview"], ["review", `Review${pendingCount ? ` (${pendingCount})` : ""}`], ["users", "Users"]].map(([id, label]) => (
+        {[["overview", "Overview"], ["review", `Review${pendingCount ? ` (${pendingCount})` : ""}`], ["users", "Users"], ["feedback", `Feedback${stats.openFeedbackCount ? ` (${stats.openFeedbackCount})` : ""}`]].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -113,6 +120,7 @@ export default function AdminDashboard({ onLogout }) {
               <div className="flex justify-between text-sm py-0.5"><span className="text-muted">Check-ins</span><span className="font-semibold text-ink">{stats.totalCheckins}</span></div>
               <div className="flex justify-between text-sm py-0.5"><span className="text-muted">Journal entries</span><span className="font-semibold text-ink">{stats.totalJournalEntries}</span></div>
               <div className="flex justify-between text-sm py-0.5"><span className="text-muted">Messages sent</span><span className="font-semibold text-ink">{stats.totalMessages}</span></div>
+              <div className="flex justify-between text-sm py-0.5"><span className="text-muted">Open feedback</span><span className="font-semibold text-ink">{stats.openFeedbackCount}</span></div>
             </div>
           </div>
 
@@ -195,6 +203,37 @@ export default function AdminDashboard({ onLogout }) {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {tab === "feedback" && (
+        <div className="space-y-3">
+          {!feedback ? (
+            <p className="text-sm text-faint">Loading...</p>
+          ) : feedback.length === 0 ? (
+            <p className="text-sm text-faint">No feedback yet.</p>
+          ) : (
+            feedback.map((f) => (
+              <div key={f.id} className="bg-surface rounded-2xl shadow-sm border border-subtle p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wide text-brand-600">{f.category}</span>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${f.status === "resolved" ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-700"}`}>
+                    {f.status}
+                  </span>
+                </div>
+                <p className="text-sm text-ink">{f.message}</p>
+                <p className="text-xs text-faint mt-2">{f.phone} · {new Date(f.date).toLocaleString()}</p>
+                {f.status !== "resolved" && (
+                  <button
+                    onClick={() => resolveFeedback(f.id)}
+                    className="mt-3 text-sm font-semibold text-brand-600 hover:text-brand-700"
+                  >
+                    Mark resolved
+                  </button>
+                )}
+              </div>
+            ))
           )}
         </div>
       )}
