@@ -5,6 +5,48 @@ of days (default 21). Phone-based login, streak tracking, money-saved stats, dai
 motivational quotes, hobby suggestions, a "panic button" breathing exercise for
 urges, daily check-ins, a journal, and an always-visible crisis-resources button.
 
+## Nearest places finder + curated learning/reading/leisure resources
+- **Places finder** (`/places`, `server/places.js`) — find churches, mosques,
+  gyms, cafés, or community centers near you. Deliberately built on
+  **OpenStreetMap** (Overpass API for the search, Nominatim for turning a
+  typed area name into coordinates) instead of Google Places: both are free
+  forever, no API key, no billing account — matching every other cost
+  decision in this app. The real tradeoff, stated plainly in the page's own
+  copy: OSM's coverage is decent in Nairobi and other major towns but can
+  have real gaps in smaller areas, since it's community-mapped. If that
+  becomes a problem, Google Places is the paid upgrade path.
+  - Location comes from the browser's Geolocation API ("Use my location"),
+    with a manual area-name search as a fallback/alternative for anyone who
+    declines permission or wants to search somewhere else.
+  - **Testing note**: same situation as the Supabase migration — this
+    sandbox can't reach `overpass-api.de` or `nominatim.openstreetmap.org`
+    (not on its allowed domain list), so I verified the code two ways
+    instead: a careful re-check of the Overpass query syntax and response
+    shape against current documentation, and a full run of every function
+    (`searchNearbyPlaces`, `geocode`) plus the actual Express routes against
+    a mocked `fetch` returning realistic Overpass/Nominatim response JSON —
+    parsing, sorting by distance, the "no name tag" fallback, the Google
+    Maps link format, and the auth/validation error paths all passed. Worth
+    a real smoke test once deployed (search near an actual Kenyan town) to
+    confirm live connectivity behaves the way the mock predicted.
+  - `USER_AGENT` in `server/places.js` is set to a placeholder contact
+    email — both OSM services' usage policies ask for a real identifying
+    User-Agent; update it if you change support contacts.
+- **Free learning & reading**, added to the Resources page: Khan Academy and
+  freeCodeCamp (genuinely free, no catch), Coursera and edX (free to
+  "audit" — Coursera's audit availability varies by course/instructor, and
+  edX's audit access expires after the course's nominal length, so the page
+  copy is honest about that rather than overselling "free"), Project
+  Gutenberg and Open Library for reading.
+- **"Take a break" (music/movies)** — deliberately **not** a curated list of
+  specific songs, artists, or titles, and nothing is embedded/played in the
+  app. Tastes vary too much for us to pick well, and licensing/hosting
+  actual media is a different project entirely. Instead it's framed as a
+  suggestion ("put on music you like, watch something that pulls your
+  attention elsewhere") with two neutral, broad platforms (YouTube,
+  Spotify's free tier) as starting points for anyone who doesn't already
+  have a go-to.
+
 ## SPA routing fix + Back/Home navigation
 Two real bugs fixed:
 

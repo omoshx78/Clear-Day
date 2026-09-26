@@ -20,6 +20,18 @@ const MEETINGS = [
   },
 ];
 
+const LEARNING = [
+  { name: "Khan Academy", desc: "Completely free, no audit/paywall catch — any subject, any level.", url: "https://www.khanacademy.org/" },
+  { name: "freeCodeCamp", desc: "Completely free coding and tech courses, with certificates.", url: "https://www.freecodecamp.org/" },
+  { name: "Coursera (audit)", desc: "Most courses can be audited free — full content, no certificate. Availability varies by course.", url: "https://www.coursera.org/" },
+  { name: "edX (audit)", desc: "Free audit track on most courses — access expires after the course length, so certificates cost extra.", url: "https://www.edx.org/" },
+];
+
+const READING = [
+  { name: "Project Gutenberg", desc: "70,000+ free ebooks, public domain classics.", url: "https://www.gutenberg.org/" },
+  { name: "Open Library", desc: "Free book lending from the Internet Archive — modern titles too, not just classics.", url: "https://openlibrary.org/" },
+];
+
 const CALENDAR = [
   { month: "April", title: "Alcohol Awareness Month" },
   { month: "May 31", title: "World No Tobacco Day" },
@@ -37,6 +49,14 @@ export default function Resources() {
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-6 pb-24">
       <h1 className="text-2xl font-bold text-ink">Resources</h1>
+
+      <Link
+        to="/places"
+        className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition"
+      >
+        <p className="font-semibold text-ink">📍 Find places near you</p>
+        <p className="text-sm text-muted mt-1">Churches, mosques, gyms, cafés, and community centers close to you</p>
+      </Link>
 
       <div>
         <p className="text-sm font-semibold text-ink mb-3">Meetings</p>
@@ -66,6 +86,73 @@ export default function Resources() {
               <span className="text-sm text-ink">{c.title}</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-ink mb-1">Free learning</p>
+        <p className="text-xs text-faint mb-3">Filling the time with something that grows you</p>
+        <div className="space-y-3">
+          {LEARNING.map((l) => (
+            <a
+              key={l.name}
+              href={l.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition"
+            >
+              <p className="font-semibold text-ink">{l.name}</p>
+              <p className="text-sm text-muted mt-1">{l.desc}</p>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-ink mb-3">Free reading</p>
+        <div className="space-y-3">
+          {READING.map((r) => (
+            <a
+              key={r.name}
+              href={r.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition"
+            >
+              <p className="font-semibold text-ink">{r.name}</p>
+              <p className="text-sm text-muted mt-1">{r.desc}</p>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-ink mb-1">Take a break</p>
+        <p className="text-xs text-faint mb-3">
+          Sometimes the move is just to step away. Put on music you actually like, or watch
+          something that pulls your attention elsewhere for a while — everyone's taste is
+          different, so we won't pretend to pick for you. A couple of starting points if you
+          want one:
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <a
+            href="https://www.youtube.com/"
+            target="_blank"
+            rel="noreferrer"
+            className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition text-center"
+          >
+            <p className="font-semibold text-ink">YouTube</p>
+            <p className="text-xs text-muted mt-1">Music, films, anything — free with ads</p>
+          </a>
+          <a
+            href="https://open.spotify.com/"
+            target="_blank"
+            rel="noreferrer"
+            className="block bg-surface rounded-2xl shadow-sm border border-subtle p-4 hover:border-brand-300 transition text-center"
+          >
+            <p className="font-semibold text-ink">Spotify</p>
+            <p className="text-xs text-muted mt-1">Free tier, ad-supported</p>
+          </a>
         </div>
       </div>
 

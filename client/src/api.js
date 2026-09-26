@@ -64,4 +64,8 @@ export const api = {
   setReminders: (enabled, time) => request("/api/users/me/reminders", { method: "POST", body: JSON.stringify({ enabled, time }) }),
 
   sendFeedback: (category, message) => request("/api/feedback", { method: "POST", body: JSON.stringify({ category, message }) }),
+
+  getPlaceCategories: () => request("/api/places/categories"),
+  getNearbyPlaces: (category, lat, lon, radius) => request(`/api/places/nearby?category=${category}&lat=${lat}&lon=${lon}&radius=${radius || 5000}`),
+  geocodePlace: (q) => request(`/api/places/geocode?q=${encodeURIComponent(q)}`),
 };

@@ -10,6 +10,7 @@ import { CRISIS_RESOURCES } from "./data-crisis.js";
 import { initiateStkPush, simulateMockCallback, isMockMode } from "./daraja.js";
 import { PRO_PLAN, isProActive } from "./pro.js";
 import { PROVIDER_SPECIALTIES, INSTITUTION_TYPES } from "./data-support.js";
+import { PLACE_CATEGORIES, searchNearbyPlaces, geocode } from "./places.js";
 
 const app = express();
 app.use(cors());
@@ -646,6 +647,35 @@ app.post("/api/admin/feedback/:id/resolve", adminAuth, async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+// -- Nearest places finder (churches, mosques, gyms, cafes, community centers) --
+// Uses OpenStreetMap (free, no API key) — see server/places.js for why.
+app.get("/api/places/categories", (req, res) => res.json(PLACE_CATEGORIES));
+
+app.get("/api/places/nearby", auth, async (req, res) => {
+  const { category, lat, lon, radius } = req.query;
+  if (!category || !lat || !lon) return res.status(400).json({ error: "category, lat, lon required" });
+  try {
+    const results = await searchNearbyPlaces(category, parseFloat(lat), parseFloat(lon), Number(radius) || 5000);
+    res.json(results);
+  } catch (err) {
+    console.error("[places] nearby search failed:", err.message);
+    res.status(502).json({ error: "Could not fetch nearby places right now. Please try again." });
+  }
+});
+
+app.get("/api/places/geocode", auth, async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: "q required" });
+  try {
+    const result = await geocode(q);
+    if (!result) return res.status(404).json({ error: "Location not found. Try a more specific search." });
+    res.json(result);
+  } catch (err) {
+    console.error("[places] geocode failed:", err.message);
+    res.status(502).json({ error: "Could not search that location right now. Please try again." });
+  }
+});
 
 app.get("/api/admin/stats", adminAuth, async (req, res) => {
   const [
