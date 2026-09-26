@@ -60,4 +60,6 @@ export const api = {
 
   sendMessage: (toUserId, text) => request("/api/messages", { method: "POST", body: JSON.stringify({ toUserId, text }) }),
   getThread: (otherUserId) => request(`/api/messages/${otherUserId}`),
+
+  setReminders: (enabled, time) => request("/api/users/me/reminders", { method: "POST", body: JSON.stringify({ enabled, time }) }),
 };

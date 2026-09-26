@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
+import Logo from "../components/Logo.jsx";
 
 export default function Login({ onLoggedIn }) {
   const [step, setStep] = useState("phone"); // phone | login | register
@@ -71,6 +72,7 @@ export default function Login({ onLoggedIn }) {
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
+      <Logo size={56} className="mb-4" />
       <h1 className="text-3xl font-bold text-ink mb-1">Welcome to ClearDay</h1>
 
       {step === "phone" && (

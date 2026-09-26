@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import TreeVisual from "../components/TreeVisual.jsx";
 
 const MILESTONES = [1, 3, 7, 14, 21, 30, 60, 90];
+const MOOD_LABELS = { struggling: "Struggling", low: "Low", okay: "Okay", good: "Good", great: "Great" };
 
-export default function Dashboard() {
+export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
   const [user, setUser] = useState(null);
   const [checkins, setCheckins] = useState([]);
   const [quote, setQuote] = useState(null);
   const [hobbies, setHobbies] = useState([]);
-  const [cravingLevel, setCravingLevel] = useState(3);
-  const [note, setNote] = useState("");
   const [checkedInToday, setCheckedInToday] = useState(false);
+  const [todaysMood, setTodaysMood] = useState(null);
   const [error, setError] = useState("");
+  const [reminderSaving, setReminderSaving] = useState(false);
 
   async function load() {
     try {
@@ -27,7 +29,9 @@ export default function Dashboard() {
       setQuote(q);
       setHobbies(h);
       const today = new Date().toDateString();
-      setCheckedInToday(c.some((entry) => new Date(entry.date).toDateString() === today));
+      const todaysEntry = c.find((entry) => new Date(entry.date).toDateString() === today);
+      setCheckedInToday(Boolean(todaysEntry));
+      setTodaysMood(todaysEntry?.mood || null);
     } catch (err) {
       setError(err.message);
     }
@@ -37,16 +41,38 @@ export default function Dashboard() {
     load();
   }, []);
 
-  async function submitCheckin() {
-    await api.checkin({ cravingLevel, note });
-    setNote("");
-    load();
-  }
-
   async function handleRelapse() {
     if (!confirm("Log a relapse and restart your streak from today? That's okay — it happens, and restarting counts as progress too.")) return;
     await api.relapse();
     load();
+  }
+
+  async function toggleReminders(enabled) {
+    setReminderSaving(true);
+    try {
+      if (enabled && typeof Notification !== "undefined" && Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+      const time = reminderPrefs?.reminderTime || "19:00";
+      const res = await api.setReminders(enabled, time);
+      onReminderPrefsChange?.({ reminderOptIn: res.reminderOptIn, reminderTime: res.reminderTime });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function updateReminderTime(time) {
+    setReminderSaving(true);
+    try {
+      const res = await api.setReminders(Boolean(reminderPrefs?.reminderOptIn), time);
+      onReminderPrefsChange?.({ reminderOptIn: res.reminderOptIn, reminderTime: res.reminderTime });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setReminderSaving(false);
+    }
   }
 
   if (error) return <p className="max-w-md mx-auto px-4 py-12 text-red-500">{error}</p>;
@@ -78,6 +104,27 @@ export default function Dashboard() {
 
         {user.goalReached && (
           <p className="mt-3 text-brand-700 font-semibold">🎉 You reached your {user.goalDays}-day goal!</p>
+        )}
+        <Link
+          to="/share"
+          className="inline-block mt-4 text-sm font-medium text-brand-600 hover:text-brand-700"
+        >
+          Share your streak →
+        </Link>
+      </div>
+
+      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
+        {checkedInToday ? (
+          <p className="text-sm text-brand-600 text-center">
+            ✓ You already checked in today{todaysMood ? ` — feeling ${MOOD_LABELS[todaysMood] || todaysMood}` : ""}. Nice work.
+          </p>
+        ) : (
+          <Link
+            to="/checkin"
+            className="block w-full text-center bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
+          >
+            Start today's check-in
+          </Link>
         )}
       </div>
 
@@ -127,36 +174,35 @@ export default function Dashboard() {
       )}
 
       <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
-        <p className="text-sm font-semibold text-ink mb-3">Today's check-in</p>
-        {checkedInToday ? (
-          <p className="text-sm text-brand-600">✓ You already checked in today. Nice work.</p>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-faint">Craving level: {cravingLevel}/5</label>
-              <input
-                type="range"
-                min="0"
-                max="5"
-                value={cravingLevel}
-                onChange={(e) => setCravingLevel(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="How are you feeling today? (optional)"
-              className="w-full rounded-lg border border-subtle px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              rows={2}
-            />
-            <button
-              onClick={submitCheckin}
-              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5 rounded-xl transition"
-            >
-              Log check-in
-            </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-ink">Daily reminder</p>
+            <p className="text-xs text-faint mt-0.5">
+              {typeof Notification === "undefined"
+                ? "Not supported in this browser"
+                : "Nudges you while this app is open in this browser — not a true push notification yet."}
+            </p>
           </div>
+          {typeof Notification !== "undefined" && (
+            <button
+              onClick={() => toggleReminders(!reminderPrefs?.reminderOptIn)}
+              disabled={reminderSaving}
+              className={`w-11 h-6 rounded-full transition relative shrink-0 ${reminderPrefs?.reminderOptIn ? "bg-brand-600" : "bg-subtlebg"}`}
+            >
+              <span
+                className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all"
+                style={{ left: reminderPrefs?.reminderOptIn ? "22px" : "2px" }}
+              />
+            </button>
+          )}
+        </div>
+        {reminderPrefs?.reminderOptIn && (
+          <input
+            type="time"
+            value={reminderPrefs.reminderTime || "19:00"}
+            onChange={(e) => updateReminderTime(e.target.value)}
+            className="mt-3 rounded-lg border border-subtle px-3 py-2 text-sm"
+          />
         )}
       </div>
 

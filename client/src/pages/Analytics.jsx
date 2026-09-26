@@ -2,6 +2,14 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 
+const MOOD_ORDER = [
+  { id: "struggling", label: "Struggling", color: "#3b82f6" },
+  { id: "low", label: "Low", color: "#06b6d4" },
+  { id: "okay", label: "Okay", color: "#a855f7" },
+  { id: "good", label: "Good", color: "#f97316" },
+  { id: "great", label: "Great", color: "#eab308" },
+];
+
 export default function Analytics() {
   const [data, setData] = useState(null);
   const [locked, setLocked] = useState(false);
@@ -71,6 +79,30 @@ export default function Analytics() {
           Higher bars mean tougher days for cravings — worth planning around.
         </p>
       </div>
+
+      {data.moodCounts && Object.keys(data.moodCounts).length > 0 && (
+        <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5">
+          <p className="text-sm font-semibold text-ink mb-4">Mood check-ins</p>
+          <div className="space-y-2">
+            {MOOD_ORDER.filter((m) => data.moodCounts[m.id]).map((m) => {
+              const count = data.moodCounts[m.id];
+              const maxMood = Math.max(...Object.values(data.moodCounts));
+              return (
+                <div key={m.id} className="flex items-center gap-3">
+                  <span className="text-xs text-muted w-20">{m.label}</span>
+                  <div className="flex-1 h-3 bg-subtlebg rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${(count / maxMood) * 100}%`, background: m.color }}
+                    />
+                  </div>
+                  <span className="text-xs text-faint w-5 text-right">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

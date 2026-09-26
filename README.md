@@ -5,6 +5,57 @@ of days (default 21). Phone-based login, streak tracking, money-saved stats, dai
 motivational quotes, hobby suggestions, a "panic button" breathing exercise for
 urges, daily check-ins, a journal, and an always-visible crisis-resources button.
 
+## Shareable streak card, Resources hub, mobile bottom nav, and reminders
+Four more ideas borrowed from reviewing a competitor app, built out fully:
+
+- **Shareable streak card** (`client/src/pages/ShareCard.jsx`, `/share`) —
+  draws a branded image (streak, days-free, money saved) on an HTML canvas
+  and offers **Share** (via the Web Share API on supporting browsers/mobile,
+  with a download fallback) or **Download**. No new dependency — drawn by
+  hand with Canvas 2D rather than a screenshot library. Reachable from a
+  "Share your streak →" link on the Dashboard.
+- **Resources hub** (`client/src/pages/Resources.jsx`, `/resources`) — real,
+  verified links to AA Kenya, the global NA meeting finder, and Gamblers
+  Anonymous; a short recovery-awareness calendar (Alcohol Awareness Month,
+  World No Tobacco Day, International Overdose Awareness Day, National
+  Recovery Month); and a "Talk to someone" section pointing at the existing
+  provider directory and crisis button. Every organization link was checked
+  against a live source rather than guessed.
+- **Mobile bottom nav** (`client/src/components/BottomNav.jsx`) — a
+  thumb-reachable tab bar (Home / Toolkit / raised Check-in button / Journal
+  / Resources), shown only below the `sm` breakpoint. The existing top
+  `NavBar` still renders on all sizes (now also linking to Resources) — the
+  bottom bar is additive for mobile, not a replacement, to avoid disrupting
+  desktop navigation.
+- **Daily reminder opt-in** — a toggle + time picker on the Dashboard
+  (`POST /api/users/me/reminders` persists the preference). **Important
+  limitation**: this uses the browser's `Notification` API checked once a
+  minute in `App.jsx` — it only fires while ClearDay is open in that
+  browser tab. It is **not** a true push notification (that needs a service
+  worker registration plus a server-side push subsystem — e.g. `web-push`
+  with VAPID keys — which isn't built yet). Treat the current version as a
+  placeholder that proves the preference/UI, not something to promise users
+  as "we'll remind you even with the app closed."
+
+## Unified daily Check-in hub (inspired by a competitor review)
+Replaces the old scattered flow (a craving slider buried on the dashboard,
+breathing exercise only reachable from the Toolkit) with one guided daily
+ritual, similar to how some other recovery apps structure a "daily pulse":
+
+- **`client/src/pages/CheckIn.jsx`** — a four-step flow at `/checkin`:
+  mood (5-point: Struggling/Low/Okay/Good/Great) → craving level + optional
+  note → guided breathing (skippable) → a closing screen with a quote and a
+  coping-tool suggestion. Finishing writes one check-in record.
+- **`client/src/components/BreathingExercise.jsx`** — the breathing timer
+  was extracted out of the Craving Toolkit into its own component so both
+  the Toolkit and this new flow share the same code instead of duplicating it.
+- **Dashboard** now shows a single "Start today's check-in" button instead
+  of an inline form, and once done for the day, shows which mood was logged.
+- **Mood was already accepted by the check-in API** (`server/index.js`) but
+  never actually collected anywhere in the UI — this closes that gap, and
+  `GET /api/analytics` now also returns `moodCounts`, shown as a simple bar
+  breakdown on the Pro Analytics page.
+
 ## Login: phone number + PIN (replaces OTP)
 No third-party SMS/email dependency for the core login flow — the person
 sets a 4-6 digit PIN at signup (same mental model as their M-Pesa PIN) and
@@ -240,6 +291,8 @@ the Blueprint import on Render afterward.
 
 ## Remaining ideas beyond the original roadmap
 - Community (grouped by addiction type, with moderation)
+- True push notifications (service worker + web-push/VAPID) to replace the
+  foreground-only reminder above
 - Swahili support, done properly with a real i18n library (see note above)
 - Accountability partner / buddy system
 - Real accounts for admin staff (right now there's one shared `ADMIN_SECRET`,

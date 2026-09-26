@@ -164,6 +164,22 @@ app.post("/api/users/me/relapse", auth, async (req, res) => {
   res.json(sanitizeUser(user));
 });
 
+// Daily reminder preference — actual delivery is handled client-side via the
+// browser Notification API while the app is open (see the note in README);
+// this just persists the preference so it survives across sessions/devices.
+app.post("/api/users/me/reminders", auth, async (req, res) => {
+  const { enabled, time } = req.body;
+  if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled (boolean) required" });
+  if (time && !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: "time must be in HH:MM format" });
+  await db.read();
+  const user = db.data.users.find((u) => u.id === req.userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  user.reminderOptIn = enabled;
+  user.reminderTime = time || user.reminderTime || "19:00";
+  await db.write();
+  res.json({ ok: true, reminderOptIn: user.reminderOptIn, reminderTime: user.reminderTime });
+});
+
 // -- Daily check-ins (protected) -----------------------------------------
 app.post("/api/checkins", auth, async (req, res) => {
   const { mood, cravingLevel, note } = req.body;
@@ -345,12 +361,18 @@ app.get("/api/analytics", auth, async (req, res) => {
     checkins: d.count,
   }));
 
+  const moodCounts = {};
+  checkins.forEach((c) => {
+    if (c.mood) moodCounts[c.mood] = (moodCounts[c.mood] || 0) + 1;
+  });
+
   res.json({
     totalCheckins: checkins.length,
     avgCravingOverall: checkins.length
       ? Math.round((checkins.reduce((s, c) => s + (Number(c.cravingLevel) || 0), 0) / checkins.length) * 10) / 10
       : 0,
     cravingByDay,
+    moodCounts,
   });
 });
 
