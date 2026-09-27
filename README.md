@@ -76,6 +76,38 @@ deployed app now that this much has changed, an onboarding walkthrough,
 an accessibility pass, and product analytics. Happy to pick any of these
 up next.
 
+## Fixed: every login was consistently slow — scrypt cost parameter
+Root cause: PIN verification (`server/auth.js`) used Node's `crypto.scrypt`
+with its **default** cost parameter (`N=16384`) — deliberately CPU/memory
+heavy, appropriate for hashing a real password with meaningful entropy,
+but wildly overkill for a 4-6 digit PIN (only ~1 million possible values,
+already protected from brute force by the 5-attempt lockout, not by how
+expensive the hash is). On Render's CPU-constrained free tier this added
+real, consistent, per-request latency — not a one-off cold-start delay
+(already ruled that out by confirming the slowness was constant, not just
+on the first request), a genuine cost paid on *every single* login.
+
+Fixed by lowering the cost parameter (`N=4096`, a 4x reduction) — measured
+a **4.8x speedup** in isolation (44.3ms → 9.2ms on this sandbox's
+hardware; the relative improvement should carry through on Render even
+though absolute numbers differ there).
+
+**The part that mattered most**: changing this parameter carelessly would
+have silently broken login for every already-registered user, since a
+stored scrypt hash only verifies against the exact same cost parameter
+used to create it. Handled by embedding the parameter directly in the
+stored hash string (`N:salt:hash`) instead of assuming a single global
+value — `verifyPin` reads back whichever `N` was used for that specific
+hash. A pre-existing hash (format `salt:hash`, no embedded `N`) is still
+recognized and verified using the old implicit default automatically, so
+**nobody's existing PIN breaks**. Only newly-created or newly-changed PINs
+(new signups, PIN changes, forgot-PIN resets, admin resets) get the
+faster setting — existing dormant accounts keep working exactly as before
+until they next change their PIN. Verified this explicitly: hand-built a
+hash in the exact old format and confirmed it still verifies correctly
+against the new code, alongside the full register/login/wrong-PIN/lockout/
+change-PIN flow through the real routes.
+
 ## Illustration, the side-gutter space, and a milestone celebration
 Three pieces, all custom SVG/CSS — deliberately not stock photography, to
 avoid licensing risk and external dependencies (you mentioned you'll

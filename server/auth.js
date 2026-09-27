@@ -12,17 +12,51 @@ function normalizePhone(phone) {
 }
 
 // -- PIN hashing (scrypt, built into Node — no extra dependency needed) ----
+//
+// scrypt is deliberately CPU/memory-heavy — that's the point for a real
+// password with meaningful entropy, but a 4-6 digit PIN only has ~1
+// million possible values, and is already protected from brute force by
+// the 5-attempt lockout below, not by how expensive the hash is to
+// compute. Node's default cost parameter (N=16384) is tuned for real
+// passwords and was adding real, measurable per-request latency on every
+// single login — worse on CPU-constrained hosting like Render's free
+// tier, where it's the difference between a login that feels instant and
+// one that visibly drags.
+//
+// The chosen N is embedded directly in the stored hash string
+// (`N:salt:hash`) precisely so this number can change later without
+// breaking anyone: verifyPin reads back whichever N was used when that
+// specific hash was created and matches it exactly, rather than assuming
+// a single global value. Hashes stored before this change (format
+// `salt:hash`, two parts, no N) are still verified correctly too — they
+// implicitly used Node's old default of 16384, so that's what's applied
+// for exactly those. Nobody's existing PIN breaks; only newly-created or
+// newly-changed PINs get the lighter, faster setting.
+const SCRYPT_N = 4096; // 4x lighter than Node's default (16384), still a real memory-hard KDF
+const LEGACY_SCRYPT_N = 16384; // Node's default, used by hashes stored before this change
+
 function hashPin(pin) {
   const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(String(pin), salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+  const hash = crypto.scryptSync(String(pin), salt, 64, { N: SCRYPT_N }).toString("hex");
+  return `${SCRYPT_N}:${salt}:${hash}`;
 }
 
 function verifyPin(pin, stored) {
-  const [salt, hash] = String(stored || "").split(":");
-  if (!salt || !hash) return false;
+  const parts = String(stored || "").split(":");
+  let N, salt, hash;
+  if (parts.length === 3) {
+    [N, salt, hash] = parts;
+    N = Number(N);
+  } else if (parts.length === 2) {
+    // Pre-existing hash from before cost was embedded in the string
+    [salt, hash] = parts;
+    N = LEGACY_SCRYPT_N;
+  } else {
+    return false;
+  }
+  if (!salt || !hash || !N) return false;
   const hashBuffer = Buffer.from(hash, "hex");
-  const testHash = crypto.scryptSync(String(pin), salt, 64);
+  const testHash = crypto.scryptSync(String(pin), salt, 64, { N });
   // Buffers must be equal length for timingSafeEqual, or it throws
   if (hashBuffer.length !== testHash.length) return false;
   return crypto.timingSafeEqual(hashBuffer, testHash);
