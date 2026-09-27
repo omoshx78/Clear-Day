@@ -1,33 +1,71 @@
 import React, { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import BackBar from "../components/BackBar.jsx";
 
 export default function Upgrade() {
   const [plan, setPlan] = useState(null);
+  const [flwInfo, setFlwInfo] = useState(null);
   const [status, setStatus] = useState(null);
-  const [checkoutState, setCheckoutState] = useState("idle"); // idle | pending | paid | failed
+  const [checkoutState, setCheckoutState] = useState("idle"); // idle | pending | verifying | paid | failed
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.getProPlan().then(setPlan).catch(() => {});
     api.getProStatus().then(setStatus).catch(() => {});
+    api.getFlutterwaveInfo().then(setFlwInfo).catch(() => {});
   }, []);
 
-  async function startCheckout() {
+  // Land back here after a real (non-mock) Flutterwave checkout —
+  // Flutterwave appends these as query params on redirect. Verify
+  // server-side before treating the payment as real; never trust these
+  // params alone, since they're visible to (and forgeable by) the browser.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const transactionId = params.get("transaction_id");
+    const txRef = params.get("tx_ref");
+    if (!transactionId || !txRef) return;
+
+    setCheckoutState("verifying");
+    api
+      .verifyFlutterwavePayment(transactionId, txRef)
+      .then((res) => {
+        if (res.ok) {
+          setCheckoutState("paid");
+          api.getProStatus().then(setStatus);
+        } else {
+          setCheckoutState("failed");
+          setError("Payment could not be confirmed. If you were charged, contact support.");
+        }
+      })
+      .catch((err) => {
+        setCheckoutState("failed");
+        setError(err.message);
+      })
+      .finally(() => {
+        // Clean the URL so a refresh doesn't re-trigger verification
+        navigate("/upgrade", { replace: true });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function startMpesaCheckout() {
     setError("");
     setCheckoutState("pending");
     try {
       const res = await api.startProCheckout();
       setMessage(res.message);
-      poll(res.checkoutRequestId);
+      pollMpesa(res.checkoutRequestId);
     } catch (err) {
       setError(err.message);
       setCheckoutState("idle");
     }
   }
 
-  function poll(checkoutRequestId, attempt = 0) {
+  function pollMpesa(checkoutRequestId, attempt = 0) {
     if (attempt > 20) {
       setCheckoutState("failed");
       setError("Payment timed out. Please try again.");
@@ -44,13 +82,32 @@ export default function Upgrade() {
           setCheckoutState("failed");
           setError(payment.resultDesc || "Payment was not completed.");
         } else {
-          poll(checkoutRequestId, attempt + 1);
+          pollMpesa(checkoutRequestId, attempt + 1);
         }
       } catch (err) {
         setError(err.message);
         setCheckoutState("failed");
       }
     }, 1500);
+  }
+
+  async function startFlutterwaveCheckout() {
+    setError("");
+    setCheckoutState("pending");
+    try {
+      const res = await api.startFlutterwaveCheckout();
+      if (res.mock) {
+        setMessage(res.message);
+        setCheckoutState("paid");
+        const s = await api.getProStatus();
+        setStatus(s);
+      } else {
+        window.location.href = res.link; // off to Flutterwave's hosted checkout
+      }
+    } catch (err) {
+      setError(err.message);
+      setCheckoutState("idle");
+    }
   }
 
   if (!plan) return <p className="max-w-md mx-auto px-4 py-12 text-faint">Loading...</p>;
@@ -74,56 +131,78 @@ export default function Upgrade() {
     <>
       <BackBar />
       <div className="max-w-md mx-auto px-4 py-10">
-      <h1 className="text-3xl font-bold text-ink mb-1">{plan.label}</h1>
-      <p className="text-muted mb-6">KES {plan.priceKes} / {plan.periodDays} days</p>
+        <h1 className="text-3xl font-bold text-ink mb-1">{plan.label}</h1>
+        <p className="text-muted mb-6">KES {plan.priceKes} / {plan.periodDays} days</p>
 
-      <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5 mb-6">
-        <ul className="space-y-2">
-          {plan.features.map((f, i) => (
-            <li key={i} className="text-sm text-muted flex gap-2">
-              <span className="text-brand-600">✓</span>{f}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {plan.mockMode && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3 mb-4">
-          Dev mode: no real M-Pesa credentials configured, so this will simulate a
-          successful payment after a few seconds instead of sending a real STK push.
-        </p>
-      )}
-
-      {checkoutState === "idle" && (
-        <button
-          onClick={startCheckout}
-          className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
-        >
-          Pay with M-Pesa
-        </button>
-      )}
-
-      {checkoutState === "pending" && (
-        <div className="text-center space-y-3 py-6">
-          <div className="w-10 h-10 mx-auto rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
-          <p className="text-sm text-muted">{message || "Waiting for payment..."}</p>
-          <p className="text-xs text-faint">Check your phone for the M-Pesa PIN prompt.</p>
+        <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-5 mb-6">
+          <ul className="space-y-2">
+            {plan.features.map((f, i) => (
+              <li key={i} className="text-sm text-muted flex gap-2">
+                <span className="text-brand-600">✓</span>{f}
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
 
-      {checkoutState === "failed" && (
-        <div className="text-center space-y-3">
-          <p className="text-sm text-red-500">{error}</p>
-          <button
-            onClick={() => setCheckoutState("idle")}
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
-          >
-            Try again
-          </button>
-        </div>
-      )}
+        {checkoutState === "idle" && (
+          <div className="space-y-3">
+            {plan.mockMode && (
+              <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">
+                M-Pesa dev mode: no real Daraja credentials configured, so this will
+                simulate a successful payment after a few seconds instead of a real STK push.
+              </p>
+            )}
+            <button
+              onClick={startMpesaCheckout}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
+            >
+              Pay with M-Pesa
+            </button>
 
-      {error && checkoutState === "idle" && <p className="text-sm text-red-500 mt-3">{error}</p>}
+            {flwInfo?.mockMode && (
+              <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">
+                Flutterwave dev mode: no real credentials configured, so this will
+                simulate a successful payment immediately instead of opening real checkout.
+              </p>
+            )}
+            <button
+              onClick={startFlutterwaveCheckout}
+              className="w-full bg-subtlebg hover:bg-subtle text-ink font-semibold py-3 rounded-xl transition border border-subtle"
+            >
+              Pay with Flutterwave
+            </button>
+            <p className="text-xs text-faint text-center">Cards, bank transfer, and mobile money via Flutterwave</p>
+          </div>
+        )}
+
+        {checkoutState === "pending" && (
+          <div className="text-center space-y-3 py-6">
+            <div className="w-10 h-10 mx-auto rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
+            <p className="text-sm text-muted">{message || "Waiting for payment..."}</p>
+            <p className="text-xs text-faint">Check your phone for the M-Pesa PIN prompt.</p>
+          </div>
+        )}
+
+        {checkoutState === "verifying" && (
+          <div className="text-center space-y-3 py-6">
+            <div className="w-10 h-10 mx-auto rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
+            <p className="text-sm text-muted">Confirming your payment...</p>
+          </div>
+        )}
+
+        {checkoutState === "failed" && (
+          <div className="text-center space-y-3">
+            <p className="text-sm text-red-500">{error}</p>
+            <button
+              onClick={() => setCheckoutState("idle")}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {error && checkoutState === "idle" && <p className="text-sm text-red-500 mt-3">{error}</p>}
       </div>
     </>
   );

@@ -44,6 +44,11 @@ export const api = {
   getProStatus: () => request("/api/pro/status"),
   startProCheckout: () => request("/api/pro/checkout", { method: "POST" }),
   pollCheckout: (checkoutRequestId) => request(`/api/pro/checkout/${checkoutRequestId}`),
+
+  getFlutterwaveInfo: () => request("/api/pro/flutterwave/info"),
+  startFlutterwaveCheckout: () => request("/api/pro/flutterwave/checkout", { method: "POST" }),
+  verifyFlutterwavePayment: (transactionId, txRef) =>
+    request(`/api/pro/flutterwave/verify?transaction_id=${encodeURIComponent(transactionId)}&tx_ref=${encodeURIComponent(txRef)}`),
   getAnalytics: () => request("/api/analytics"),
 
   getProviderSpecialties: () => request("/api/providers/specialties"),

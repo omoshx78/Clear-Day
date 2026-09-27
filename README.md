@@ -76,6 +76,63 @@ deployed app now that this much has changed, an onboarding walkthrough,
 an accessibility pass, and product analytics. Happy to pick any of these
 up next.
 
+## Flutterwave — second payment option alongside M-Pesa Daraja
+Added as an additional choice, not a replacement — the Upgrade page now
+offers both "Pay with M-Pesa" (direct Daraja) and "Pay with Flutterwave"
+(cards, bank transfer, mobile money), so whichever you actually have live
+credentials for just works. Built against Flutterwave's **v3 Standard
+Checkout** API — confirmed via current documentation to still be the
+stable, most-used production path as of this writing (a v4 exists in
+beta with a different auth model and webhook scheme, deliberately not
+used here).
+
+- **`server/flutterwave.js`** — `initiateFlutterwaveCheckout` (creates a
+  hosted payment link), `verifyFlutterwaveTransaction` (re-checks a
+  transaction's real status server-side), and
+  `verifyFlutterwaveWebhookSignature` (validates the `verif-hash` header
+  Flutterwave sends with webhooks, using a timing-safe comparison so the
+  check itself can't leak the secret one byte at a time). Same
+  graceful-degradation pattern as `daraja.js`: no `FLUTTERWAVE_SECRET_KEY`
+  set → runs in mock mode, simulating a successful payment immediately
+  instead of trying to open a real hosted checkout page.
+- **Three new routes**: `POST /api/pro/flutterwave/checkout` (starts it),
+  `GET /api/pro/flutterwave/verify` (called by the frontend after
+  Flutterwave redirects the customer back), and
+  `POST /api/pro/flutterwave/webhook` (Flutterwave's independent
+  server-to-server notification, for cases where someone closes the tab
+  before the redirect completes).
+- **Security properties, all explicitly tested** — not just assumed:
+  - The payment is **never** trusted from the redirect's query params
+    alone; `verify` always re-checks the real transaction status and
+    amount directly against Flutterwave's API using the secret key.
+  - An **underpaid** transaction (confirmed real in the mock, but for
+    less than the plan's price) correctly does **not** grant Pro.
+  - A `tx_ref` belonging to a **different user** correctly 404s rather
+    than letting one person confirm someone else's payment.
+  - A completely **made-up** `tx_ref` correctly 404s.
+  - A webhook with the **wrong** `verif-hash` is correctly rejected
+    (401); the right one is correctly accepted.
+- **`payments.provider`** — a new column (migration included, same
+  pattern as before) distinguishes which gateway processed each payment
+  row; existing Daraja rows default to `'daraja'` automatically, nothing
+  to backfill.
+- **Setup**: log into your Flutterwave dashboard → Settings → API Keys →
+  copy the **Secret Key** (test or live) → set as `FLUTTERWAVE_SECRET_KEY`
+  on Render. For webhooks (optional but recommended): Settings → Webhooks
+  → set your URL to `https://<your-render-url>/api/pro/flutterwave/webhook`
+  and generate a Secret Hash → set that same value as
+  `FLUTTERWAVE_WEBHOOK_SECRET_HASH`. Also set `FRONTEND_URL` to your real
+  Vercel URL — Flutterwave needs a real public address to redirect
+  customers back to after checkout, not `localhost`.
+- **Testing note**: same situation as Supabase/OSM/Resend before it — this
+  sandbox can't reach `api.flutterwave.com` (not on its allowed domain
+  list), so every route was verified against a mocked Flutterwave API
+  returning realistic response shapes, covering the full checkout → verify
+  → Pro-granted flow plus all the security edge cases listed above. Worth
+  a real end-to-end test (an actual small payment) once live keys are in,
+  the same way it's always worth confirming a mocked integration against
+  the real thing once you can.
+
 ## Fixed: every login was consistently slow — scrypt cost parameter
 Root cause: PIN verification (`server/auth.js`) used Node's `crypto.scrypt`
 with its **default** cost parameter (`N=16384`) — deliberately CPU/memory

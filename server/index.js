@@ -12,6 +12,7 @@ import { initiateStkPush, simulateMockCallback, isMockMode } from "./daraja.js";
 import { PRO_PLAN, isProActive } from "./pro.js";
 import { PROVIDER_SPECIALTIES, INSTITUTION_TYPES } from "./data-support.js";
 import { PLACE_CATEGORIES, searchNearbyPlaces, geocode } from "./places.js";
+import { initiateFlutterwaveCheckout, verifyFlutterwaveTransaction, verifyFlutterwaveWebhookSignature, isFlutterwaveMockMode } from "./flutterwave.js";
 
 const app = express();
 app.use(cors());
@@ -436,6 +437,107 @@ app.get("/api/pro/checkout/:checkoutRequestId", auth, async (req, res) => {
   if (error) return dbError(res, error);
   if (!payment) return res.status(404).json({ error: "Payment not found" });
   res.json(payment);
+});
+
+// -- Pro tier: Flutterwave billing (second payment option alongside Daraja) --
+app.get("/api/pro/flutterwave/info", (req, res) => {
+  res.json({ mockMode: isFlutterwaveMockMode });
+});
+
+app.post("/api/pro/flutterwave/checkout", auth, async (req, res) => {
+  const { data: user, error: lookupError } = await getUserById(req.userId);
+  if (lookupError) return dbError(res, lookupError);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const txRef = `clearday-${nanoid(16)}`;
+  try {
+    const { mock, link } = await initiateFlutterwaveCheckout({
+      txRef,
+      amount: PRO_PLAN.priceKes,
+      phone: user.phone,
+      email: user.recoveryEmail,
+      name: "ClearDay user",
+    });
+
+    const payment = {
+      id: nanoid(10),
+      userId: user.id,
+      checkoutRequestId: txRef,
+      amount: PRO_PLAN.priceKes,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      provider: "flutterwave",
+    };
+    const { error: insertError } = await supabase.from("payments").insert(payment);
+    if (insertError) return dbError(res, insertError);
+
+    if (mock) {
+      // No real hosted page to send anyone to without live keys — simulate
+      // a successful payment immediately, same spirit as Daraja's mock mode.
+      await applyPaymentResult({ checkoutRequestId: txRef, resultCode: 0, resultDesc: "Mock Flutterwave payment" });
+      return res.status(202).json({ mock: true, txRef, message: "Mock payment applied (dev mode) — no real Flutterwave credentials configured." });
+    }
+
+    res.status(202).json({ mock: false, txRef, link });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Called by the frontend after Flutterwave redirects the customer back —
+// always re-verifies server-side with the secret key before granting Pro,
+// never trusts the redirect's query params alone (those are visible to,
+// and forgeable by, the customer's own browser).
+app.get("/api/pro/flutterwave/verify", auth, async (req, res) => {
+  const { transaction_id, tx_ref } = req.query;
+  if (!transaction_id || !tx_ref) return res.status(400).json({ error: "transaction_id and tx_ref required" });
+
+  const { data: payment, error } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("checkoutRequestId", tx_ref)
+    .eq("userId", req.userId)
+    .maybeSingle();
+  if (error) return dbError(res, error);
+  if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+  try {
+    const result = await verifyFlutterwaveTransaction(transaction_id);
+    const amountOk = result.mock || (Number(result.amount) >= PRO_PLAN.priceKes && result.currency === "KES");
+    const success = result.status === "successful" && amountOk;
+    await applyPaymentResult({
+      checkoutRequestId: tx_ref,
+      resultCode: success ? 0 : 1,
+      resultDesc: success ? "Verified via Flutterwave" : `Verification failed: status=${result.status}`,
+    });
+    res.json({ ok: success, status: success ? "paid" : "failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Flutterwave calls this independently of the customer's redirect — useful
+// if they close the tab before the redirect completes. Must stay public;
+// Flutterwave's servers call it directly, with no user session, so it's
+// authenticated via the verif-hash header instead.
+app.post("/api/pro/flutterwave/webhook", async (req, res) => {
+  if (!verifyFlutterwaveWebhookSignature(req.headers["verif-hash"])) {
+    return res.status(401).json({ error: "Invalid signature" });
+  }
+  try {
+    const { event, data } = req.body || {};
+    if (event === "charge.completed" && data?.tx_ref) {
+      const success = data.status === "successful" && Number(data.amount) >= PRO_PLAN.priceKes && data.currency === "KES";
+      await applyPaymentResult({
+        checkoutRequestId: data.tx_ref,
+        resultCode: success ? 0 : 1,
+        resultDesc: success ? "Confirmed via Flutterwave webhook" : `Webhook reported status=${data.status}`,
+      });
+    }
+  } catch (err) {
+    console.error("Flutterwave webhook error:", err.message);
+  }
+  res.status(200).json({ ok: true });
 });
 
 app.get("/api/analytics", auth, async (req, res) => {

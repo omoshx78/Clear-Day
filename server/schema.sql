@@ -80,7 +80,8 @@ create table if not exists payments (
   status text default 'pending',
   "createdAt" timestamptz default now(),
   "resultDesc" text,
-  "resolvedAt" timestamptz
+  "resolvedAt" timestamptz,
+  provider text default 'daraja'
 );
 create index if not exists payments_checkout_request_id_idx on payments ("checkoutRequestId");
 create index if not exists payments_user_id_idx on payments ("userId");
@@ -140,4 +141,7 @@ alter table users add column if not exists "pinResetExpiresAt" timestamptz;
 
 -- Added to nudge repeat users who never added a recovery email:
 alter table users add column if not exists "loginCount" integer default 0;
+
+-- Added to support Flutterwave alongside Daraja as a payment option:
+alter table payments add column if not exists provider text default 'daraja';
 
