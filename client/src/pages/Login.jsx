@@ -3,13 +3,16 @@ import { api } from "../api.js";
 import Logo from "../components/Logo.jsx";
 
 export default function Login({ onLoggedIn }) {
-  const [step, setStep] = useState("phone"); // phone | login | register
+  const [step, setStep] = useState("phone"); // phone | login | register | forgot | reset
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetNewPin, setResetNewPin] = useState("");
+  const [forgotMessage, setForgotMessage] = useState("");
 
   async function handlePhoneSubmit(e) {
     e.preventDefault();
@@ -68,6 +71,38 @@ export default function Login({ onLoggedIn }) {
     setConfirmPin("");
     setAgeConfirmed(false);
     setError("");
+  }
+
+  async function handleForgotPin(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.forgotPin(phone);
+      setForgotMessage(res.message);
+      setStep("reset");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPin(e) {
+    e.preventDefault();
+    if (!/^\d{4,6}$/.test(resetNewPin)) return setError("New PIN must be 4-6 digits.");
+    setLoading(true);
+    setError("");
+    try {
+      await api.resetPin(phone, resetCode, resetNewPin);
+      setStep("login");
+      setPin("");
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -147,6 +182,9 @@ export default function Login({ onLoggedIn }) {
             <button type="button" onClick={resetToPhone} className="w-full text-sm text-muted hover:text-ink">
               Use a different number
             </button>
+            <button type="button" onClick={() => { setStep("forgot"); setError(""); }} className="w-full text-sm text-muted hover:text-ink">
+              Forgot PIN?
+            </button>
           </form>
         </>
       )}
@@ -194,6 +232,74 @@ export default function Login({ onLoggedIn }) {
             </button>
           </form>
         </>
+      )}
+
+      {step === "forgot" && (
+        <>
+          <p className="text-muted mb-8">
+            If you added a recovery email to this account, we'll send a reset code there.
+          </p>
+          <form onSubmit={handleForgotPin} className="space-y-4">
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50"
+            >
+              {loading ? "Sending..." : "Send reset code"}
+            </button>
+            <button type="button" onClick={() => setStep("login")} className="w-full text-sm text-muted hover:text-ink">
+              Back
+            </button>
+          </form>
+        </>
+      )}
+
+      {step === "reset" && (
+        <>
+          <p className="text-muted mb-2">{forgotMessage}</p>
+          <p className="text-xs text-faint mb-6">
+            No recovery email on file? The code won't arrive — contact support from the Resources
+            page instead and we'll help you back in.
+          </p>
+          <form onSubmit={handleResetPin} className="space-y-4">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={resetCode}
+              onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="6-digit code"
+              className="w-full rounded-lg border border-subtle px-3 py-2.5 tracking-widest text-center text-lg"
+            />
+            <input
+              type="password"
+              inputMode="numeric"
+              value={resetNewPin}
+              onChange={(e) => setResetNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="New PIN (4-6 digits)"
+              className="w-full rounded-lg border border-subtle px-3 py-2.5 tracking-[0.5em] text-center text-xl"
+            />
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50"
+            >
+              {loading ? "Updating..." : "Set new PIN"}
+            </button>
+            <button type="button" onClick={resetToPhone} className="w-full text-sm text-muted hover:text-ink">
+              Cancel
+            </button>
+          </form>
+        </>
+      )}
+
+      {step === "phone" && (
+        <p className="text-xs text-faint text-center mt-6">
+          By continuing, you agree to our{" "}
+          <a href="/legal/terms" className="underline hover:text-ink">Terms</a> and{" "}
+          <a href="/legal/privacy" className="underline hover:text-ink">Privacy Policy</a>.
+        </p>
       )}
     </div>
   );

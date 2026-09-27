@@ -34,4 +34,5 @@ export const adminApi = {
   verifyInstitution: (id) => request(`/api/admin/institutions/${id}/verify`, { method: "POST" }),
   getFeedback: () => request("/api/admin/feedback"),
   resolveFeedback: (id) => request(`/api/admin/feedback/${id}/resolve`, { method: "POST" }),
+  resetUserPin: (id) => request(`/api/admin/users/${id}/reset-pin`, { method: "POST" }),
 };

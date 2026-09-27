@@ -55,6 +55,16 @@ export default function NavBar({ onLogout }) {
             </Link>
           )}
 
+          <Link
+            to="/settings"
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
+              location.pathname === "/settings" ? "bg-brand-600 text-white" : "text-muted hover:bg-subtlebg"
+            }`}
+            title="Settings"
+          >
+            ⚙
+          </Link>
+
           <button
             onClick={onLogout}
             className="px-3 py-1.5 rounded-full text-sm font-medium text-faint hover:text-red-500 hover:bg-red-50 transition"

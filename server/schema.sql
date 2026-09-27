@@ -36,7 +36,10 @@ create table if not exists users (
   "isPro" boolean default false,
   "proExpiresAt" timestamptz,
   "reminderOptIn" boolean default false,
-  "reminderTime" text default '19:00'
+  "reminderTime" text default '19:00',
+  "recoveryEmail" text,
+  "pinResetCode" text,
+  "pinResetExpiresAt" timestamptz
 );
 create index if not exists users_phone_idx on users (phone);
 create index if not exists users_provider_status_idx on users ("providerStatus");

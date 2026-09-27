@@ -20,10 +20,13 @@ import Thread from "./pages/Thread.jsx";
 import InstitutionApply from "./pages/InstitutionApply.jsx";
 import JoinInstitution from "./pages/JoinInstitution.jsx";
 import InstitutionDashboard from "./pages/InstitutionDashboard.jsx";
+import Legal from "./pages/Legal.jsx";
+import Settings from "./pages/Settings.jsx";
 import AdminLogin from "./pages/admin/AdminLogin.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import NavBar from "./components/NavBar.jsx";
 import BottomNav from "./components/BottomNav.jsx";
+import Footer from "./components/Footer.jsx";
 import CrisisButton from "./components/CrisisButton.jsx";
 import { api } from "./api.js";
 import { getAdminSecret, clearAdminSecret } from "./adminApi.js";
@@ -157,6 +160,8 @@ export default function App() {
             <Route path="/places" element={token && onboarded ? <Places /> : <Navigate to="/" />} />
             <Route path="/contact" element={token && onboarded ? <Contact /> : <Navigate to="/" />} />
             <Route path="/share" element={token && onboarded ? <ShareCard /> : <Navigate to="/" />} />
+            <Route path="/settings" element={token && onboarded ? <Settings onLoggedOut={handleLogout} /> : <Navigate to="/" />} />
+            <Route path="/legal/:type" element={<Legal />} />
             <Route
               path="/admin/login"
               element={adminLoggedIn ? <Navigate to="/admin" /> : <AdminLogin onLoggedIn={() => setAdminLoggedIn(true)} />}
@@ -168,6 +173,7 @@ export default function App() {
           </Routes>
         )}
       </main>
+      <Footer />
       <CrisisButton />
       {token && onboarded && <BottomNav />}
     </div>

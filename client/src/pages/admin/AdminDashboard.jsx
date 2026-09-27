@@ -49,6 +49,15 @@ export default function AdminDashboard({ onLogout }) {
     setFeedback((prev) => prev.map((f) => (f.id === id ? { ...f, status: "resolved" } : f)));
     loadAll();
   }
+  async function resetPin(id, phone) {
+    if (!confirm(`Reset the PIN for ${phone}? You'll need to relay the new temporary PIN to them yourself (call, WhatsApp, etc.) — there's no other delivery channel for this.`)) return;
+    try {
+      const res = await adminApi.resetUserPin(id);
+      alert(`New temporary PIN for ${res.phone}: ${res.tempPin}\n\nRelay this to them now — it won't be shown again. They should change it from Settings once they're back in.`);
+    } catch (err) {
+      alert(`Failed to reset PIN: ${err.message}`);
+    }
+  }
 
   if (error) return <p className="max-w-2xl mx-auto px-4 py-12 text-red-500">{error}</p>;
   if (!stats) return <p className="max-w-2xl mx-auto px-4 py-12 text-faint">Loading...</p>;
@@ -189,6 +198,7 @@ export default function AdminDashboard({ onLogout }) {
                   <th className="text-left px-4 py-2">Streak</th>
                   <th className="text-left px-4 py-2">Pro</th>
                   <th className="text-left px-4 py-2">Joined</th>
+                  <th className="text-left px-4 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -199,6 +209,14 @@ export default function AdminDashboard({ onLogout }) {
                     <td className="px-4 py-2">{u.streak ?? "—"}</td>
                     <td className="px-4 py-2">{u.isPro ? "★" : ""}</td>
                     <td className="px-4 py-2 text-faint">{new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => resetPin(u.id, u.phone)}
+                        className="text-xs font-semibold text-brand-600 hover:text-brand-700"
+                      >
+                        Reset PIN
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

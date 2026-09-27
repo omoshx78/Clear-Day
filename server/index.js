@@ -3,7 +3,8 @@ import cors from "cors";
 import { nanoid } from "nanoid";
 import { supabase } from "./supabaseClient.js";
 import { PRESETS, calcStreak, calcMoneySaved } from "./presets.js";
-import { createSession, requireAuth, requireAdmin, normalizePhone, getLastActive, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS } from "./auth.js";
+import { createSession, requireAuth, requireAdmin, normalizePhone, getLastActive, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS, PIN_RESET_TTL_MS, generateResetCode } from "./auth.js";
+import { sendEmail, isEmailMockMode } from "./email.js";
 import { randomQuote } from "./data-quotes.js";
 import { weeklyHobbies } from "./data-hobbies.js";
 import { CRISIS_RESOURCES } from "./data-crisis.js";
@@ -104,8 +105,60 @@ app.post("/api/auth/login", async (req, res) => {
   res.json({ token, userId: user.id, isNewUser: false, onboarded: Boolean(user.addiction) });
 });
 
+// -- Forgot PIN (self-service, only works if a recovery email is on file) --
+app.post("/api/auth/forgot-pin", async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ error: "phone required" });
+  const normalized = normalizePhone(phone);
+  const { data: user, error } = await supabase.from("users").select("id,recoveryEmail").eq("phone", normalized).maybeSingle();
+  if (error) return dbError(res, error);
+
+  // Deliberately vague response either way — don't reveal whether a phone
+  // number is registered or has a recovery email, same reasoning as most
+  // "forgot password" flows.
+  const genericResponse = { ok: true, message: "If that account has a recovery email on file, a reset code has been sent to it." };
+  if (!user || !user.recoveryEmail) return res.json(genericResponse);
+
+  const code = generateResetCode();
+  await supabase.from("users").update({
+    pinResetCode: code,
+    pinResetExpiresAt: new Date(Date.now() + PIN_RESET_TTL_MS).toISOString(),
+  }).eq("id", user.id);
+
+  sendEmail({
+    to: user.recoveryEmail,
+    subject: "Your ClearDay PIN reset code",
+    html: `<p>Your ClearDay PIN reset code is:</p><h2>${code}</h2><p>This code expires in 15 minutes. If you didn't request this, you can ignore this email.</p>`,
+  }).catch((err) => console.error("[email] forgot-pin send failed:", err.message));
+
+  res.json(genericResponse);
+});
+
+app.post("/api/auth/reset-pin", async (req, res) => {
+  const { phone, code, newPin } = req.body;
+  if (!phone || !code || !newPin) return res.status(400).json({ error: "phone, code, and newPin required" });
+  if (!PIN_PATTERN.test(String(newPin))) return res.status(400).json({ error: "PIN must be 4-6 digits" });
+
+  const normalized = normalizePhone(phone);
+  const { data: user, error } = await supabase.from("users").select("*").eq("phone", normalized).maybeSingle();
+  if (error) return dbError(res, error);
+  if (!user || !user.pinResetCode) return res.status(400).json({ error: "Invalid or expired code" });
+  if (new Date(user.pinResetExpiresAt) < new Date()) return res.status(400).json({ error: "This code has expired. Request a new one." });
+  if (user.pinResetCode !== String(code)) return res.status(400).json({ error: "Incorrect code" });
+
+  await supabase.from("users").update({
+    pinHash: hashPin(newPin),
+    pinResetCode: null,
+    pinResetExpiresAt: null,
+    failedPinAttempts: 0,
+    lockedUntil: null,
+  }).eq("id", user.id);
+
+  res.json({ ok: true, message: "PIN updated. You can log in with your new PIN now." });
+});
+
 function sanitizeUser(user) {
-  const { pinHash, failedPinAttempts, lockedUntil, ...safe } = user;
+  const { pinHash, failedPinAttempts, lockedUntil, pinResetCode, pinResetExpiresAt, ...safe } = user;
   return safe;
 }
 
@@ -173,6 +226,72 @@ app.post("/api/users/me/reminders", auth, async (req, res) => {
   const { error } = await supabase.from("users").update(updates).eq("id", req.userId);
   if (error) return dbError(res, error);
   res.json({ ok: true, ...updates });
+});
+
+// -- Profile self-service: change PIN, set recovery email, export, delete --
+app.post("/api/users/me/change-pin", auth, async (req, res) => {
+  const { currentPin, newPin } = req.body;
+  if (!currentPin || !newPin) return res.status(400).json({ error: "currentPin and newPin required" });
+  if (!PIN_PATTERN.test(String(newPin))) return res.status(400).json({ error: "New PIN must be 4-6 digits" });
+
+  const { data: user, error } = await getUserById(req.userId);
+  if (error) return dbError(res, error);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  if (!verifyPin(currentPin, user.pinHash)) return res.status(401).json({ error: "Current PIN is incorrect" });
+
+  const { error: updateError } = await supabase.from("users").update({ pinHash: hashPin(newPin) }).eq("id", req.userId);
+  if (updateError) return dbError(res, updateError);
+  res.json({ ok: true });
+});
+
+app.post("/api/users/me/recovery-email", auth, async (req, res) => {
+  const { email } = req.body;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "That doesn't look like a valid email" });
+
+  const { error } = await supabase.from("users").update({ recoveryEmail: email || null }).eq("id", req.userId);
+  if (error) return dbError(res, error);
+  res.json({ ok: true, recoveryEmail: email || null });
+});
+
+// Self-service export of everything this account has stored — profile,
+// check-ins, journal, and messages they're party to. Never includes other
+// people's data.
+app.get("/api/users/me/export", auth, async (req, res) => {
+  const { data: user, error: userError } = await getUserById(req.userId);
+  if (userError) return dbError(res, userError);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const [{ data: checkins }, { data: journal }, { data: sentMessages }, { data: receivedMessages }, { data: feedback }] = await Promise.all([
+    supabase.from("checkins").select("*").eq("userId", req.userId),
+    supabase.from("journal").select("*").eq("userId", req.userId),
+    supabase.from("messages").select("*").eq("fromUserId", req.userId),
+    supabase.from("messages").select("*").eq("toUserId", req.userId),
+    supabase.from("feedback").select("*").eq("userId", req.userId),
+  ]);
+
+  res.setHeader("Content-Disposition", "attachment; filename=clearday-my-data.json");
+  res.json({
+    exportedAt: new Date().toISOString(),
+    profile: sanitizeUser(user),
+    checkins: checkins || [],
+    journal: journal || [],
+    messages: [...(sentMessages || []), ...(receivedMessages || [])],
+    feedback: feedback || [],
+  });
+});
+
+// Deletes the account and everything that references it (check-ins,
+// journal, sessions, messages, institutions they created — all cascade via
+// the foreign keys in schema.sql). Feedback rows are kept but anonymized
+// (ON DELETE SET NULL), so support history isn't silently lost.
+app.delete("/api/users/me", auth, async (req, res) => {
+  // Scrub the phone number copy in feedback too — "userId" alone going null
+  // (via the ON DELETE SET NULL foreign key) leaves the phone text behind,
+  // which defeats the point of "delete my data".
+  await supabase.from("feedback").update({ phone: null }).eq("userId", req.userId);
+  const { error } = await supabase.from("users").delete().eq("id", req.userId);
+  if (error) return dbError(res, error);
+  res.json({ ok: true });
 });
 
 app.post("/api/checkins", auth, async (req, res) => {
@@ -630,6 +749,16 @@ app.post("/api/feedback", auth, async (req, res) => {
   };
   const { error } = await supabase.from("feedback").insert(entry);
   if (error) return dbError(res, error);
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    sendEmail({
+      to: adminEmail,
+      subject: `ClearDay: new ${category} from ${entry.phone || "a user"}`,
+      html: `<p><strong>Category:</strong> ${category}</p><p><strong>From:</strong> ${entry.phone || "unknown"}</p><p><strong>Message:</strong></p><p>${entry.message.replace(/</g, "&lt;")}</p>`,
+    }).catch((err) => console.error("[email] feedback notification failed:", err.message));
+  }
+
   res.status(201).json({ ok: true });
 });
 
@@ -741,6 +870,25 @@ app.get("/api/admin/stats", adminAuth, async (req, res) => {
     signupsByDay,
     daraja: { mockMode: isMockMode },
   });
+});
+
+// Admin-assisted PIN reset — the fallback for users who never set a
+// recovery email (so the self-service /api/auth/forgot-pin can't reach
+// them). Generates a fresh temporary PIN, shown once in this response for
+// the admin to relay to the user directly (phone call, WhatsApp, etc. —
+// whatever channel they contacted support through). The user should
+// change it via /api/users/me/change-pin once they're back in.
+app.post("/api/admin/users/:id/reset-pin", adminAuth, async (req, res) => {
+  const tempPin = generateResetCode().slice(0, 6);
+  const { data: user, error } = await supabase
+    .from("users")
+    .update({ pinHash: hashPin(tempPin), failedPinAttempts: 0, lockedUntil: null })
+    .eq("id", req.params.id)
+    .select("id,phone")
+    .maybeSingle();
+  if (error) return dbError(res, error);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  res.json({ ok: true, phone: user.phone, tempPin });
 });
 
 app.get("/api/admin/users", adminAuth, async (req, res) => {

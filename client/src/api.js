@@ -68,4 +68,11 @@ export const api = {
   getPlaceCategories: () => request("/api/places/categories"),
   getNearbyPlaces: (category, lat, lon, radius) => request(`/api/places/nearby?category=${category}&lat=${lat}&lon=${lon}&radius=${radius || 5000}`),
   geocodePlace: (q) => request(`/api/places/geocode?q=${encodeURIComponent(q)}`),
+
+  forgotPin: (phone) => request("/api/auth/forgot-pin", { method: "POST", body: JSON.stringify({ phone }) }),
+  resetPin: (phone, code, newPin) => request("/api/auth/reset-pin", { method: "POST", body: JSON.stringify({ phone, code, newPin }) }),
+  changePin: (currentPin, newPin) => request("/api/users/me/change-pin", { method: "POST", body: JSON.stringify({ currentPin, newPin }) }),
+  setRecoveryEmail: (email) => request("/api/users/me/recovery-email", { method: "POST", body: JSON.stringify({ email }) }),
+  exportMyData: () => request("/api/users/me/export"),
+  deleteMyAccount: () => request("/api/users/me", { method: "DELETE" }),
 };

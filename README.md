@@ -5,6 +5,87 @@ of days (default 21). Phone-based login, streak tracking, money-saved stats, dai
 motivational quotes, hobby suggestions, a "panic button" breathing exercise for
 urges, daily check-ins, a journal, and an always-visible crisis-resources button.
 
+## Closing the real gaps: legal pages, forgot-PIN, account deletion/export, PIN change, admin email
+Everything flagged in the previous review, now built:
+
+- **Terms of Service + Privacy Policy** (`/legal/terms`, `/legal/privacy`,
+  `client/src/pages/Legal.jsx`) — a genuine first-draft, written with
+  Kenya's Data Protection Act in mind, honestly labeled as **not yet
+  reviewed by a lawyer** both in the UI and here. Linked from the login
+  screen ("By continuing, you agree to...") and from Settings.
+- **Self-service forgot-PIN** — a person can optionally add a recovery
+  email from Settings (`POST /api/users/me/recovery-email`); if they forget
+  their PIN, `POST /api/auth/forgot-pin` emails a 6-digit code there
+  (15-minute expiry, single use), and `POST /api/auth/reset-pin` verifies
+  it and sets a new PIN. The response is **deliberately vague** either way
+  ("if that account has a recovery email on file...") so the endpoint
+  can't be used to check which phone numbers are registered — verified
+  this directly: same response for a real account with no recovery email,
+  and for a phone number that isn't registered at all.
+- **Admin-assisted PIN reset** — the fallback for anyone who never set a
+  recovery email. They reach out via `/contact`, and admin clicks "Reset
+  PIN" next to their row on the `/admin` Users tab, which generates a
+  fresh temporary PIN shown once for admin to relay manually (call,
+  WhatsApp, whatever channel they came in on). **This button existed in
+  `adminApi.js` but wasn't actually wired into any UI until this pass** —
+  found via a systematic check of the whole app for exactly this pattern
+  (see below).
+- **Change PIN, export data, delete account** — all live in the new
+  `/settings` page. Export downloads everything the account owns
+  (profile, check-ins, journal, messages, feedback) as JSON. Delete is a
+  two-step confirmation, and — this was a real bug I found and fixed —
+  originally only unlinked the account from its feedback history
+  (`userId` → null via the DB's `ON DELETE SET NULL`) without clearing the
+  **phone number text copy** stored alongside it, which would have left a
+  literal phone number behind after someone asked to be forgotten. Fixed:
+  deletion now explicitly scrubs that field first. Verified end-to-end
+  with a mock — phone number confirmed `null` after deletion, not just the
+  link to the account.
+- **Admin email notifications** (your original question) — new feedback
+  submissions now email the admin via **Resend** (free tier: 3,000/month,
+  100/day, no credit card, sends from Resend's own address so you don't
+  need to verify a domain for this). Set `RESEND_API_KEY` and `ADMIN_EMAIL`
+  as env vars to enable; without them, it logs to the console instead of
+  crashing (`server/email.js`), same graceful-degradation pattern as the
+  Daraja mock mode. Verified the actual email content reaches the mock
+  transport correctly, end to end from a real feedback submission.
+- **`Settings.jsx`** ties all of this together in one page — plan/goal
+  editing, PIN change, recovery email, data export, and the delete-account
+  danger zone — reachable from the nav bar (previously nothing let you
+  revisit your profile after onboarding at all).
+
+**What this pass caught, worth knowing about**: I found a substantial,
+mostly-complete implementation of all of this already sitting in the
+project files when I started — consistent, well-written, and I don't have
+an explanation for how it got there. Rather than trust it, I read every
+line and found three real, would-have-shipped-broken bugs: `email.js`
+didn't match the interface the rest of the code called it with (would have
+crashed on the first email send), two duplicate/conflicting `import`
+statements from the same module, and the admin "Reset PIN" button existed
+in the API client but was never actually rendered anywhere — the exact
+same class of bug as `Inbox.jsx`/`Thread.jsx` from an earlier round. All
+three are fixed and the whole flow (forgot-PIN, change-PIN, export,
+delete-with-cascade, admin reset, email notification) was run end-to-end
+against a mocked database and mocked email transport before being
+packaged here.
+
+**Still real gaps, deliberately not tackled this round** (flagged before,
+still true): real Daraja M-Pesa credentials (Pro is still in mock mode),
+error monitoring (Sentry or similar), a full click-through of the live
+deployed app now that this much has changed, an onboarding walkthrough,
+an accessibility pass, and product analytics. Happy to pick any of these
+up next.
+
+## Footer — "Developed by JazzMedia"
+Added `client/src/components/Footer.jsx`, rendered on every screen
+(including the login/onboarding screens, before anyone's even signed up —
+that's where cross-promotion to jazzmedia.co.ke reaches the most people)
+via `App.jsx`. Links out to https://www.jazzmedia.co.ke/ in a new tab.
+Padded on mobile (`pb-24`) so it isn't hidden behind the fixed bottom nav
+bar — worth a visual check on a real phone after deploying, since padding
+math like this is exactly the kind of thing that looks right in code and
+still needs an eyeball check on an actual device.
+
 ## Nearest places finder + curated learning/reading/leisure resources
 - **Places finder** (`/places`, `server/places.js`) — find churches, mosques,
   gyms, cafés, or community centers near you. Deliberately built on

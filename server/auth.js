@@ -31,8 +31,13 @@ function verifyPin(pin, stored) {
 const PIN_PATTERN = /^\d{4,6}$/;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+const PIN_RESET_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-export { normalizePhone, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS };
+export function generateResetCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+export { normalizePhone, hashPin, verifyPin, PIN_PATTERN, MAX_FAILED_ATTEMPTS, LOCKOUT_MS, PIN_RESET_TTL_MS };
 
 export async function createSession(userId) {
   const token = nanoid(32);
@@ -82,10 +87,9 @@ export function requireAuth() {
   };
 }
 
-// Admin middleware for the MVP admin/review actions (verifying providers and
-// institutions). No admin UI exists yet — this is meant to be called with a
-// tool like curl/Postman using the ADMIN_SECRET env var as a header. Replace
-// with real staff accounts before you have real applicants to review.
+// Admin middleware — gates both the /admin dashboard UI and the
+// curl-callable review endpoints behind one shared secret. Fine for a solo
+// owner; swap for real per-staff accounts before you have an admin team.
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "dev-admin-secret";
 if (!process.env.ADMIN_SECRET) {
   console.log(`[admin] No ADMIN_SECRET set — using dev default "dev-admin-secret". Set a real one before deploying.`);
