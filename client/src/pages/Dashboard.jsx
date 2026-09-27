@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import TreeVisual from "../components/TreeVisual.jsx";
+import Celebration from "../components/Celebration.jsx";
 
 const MILESTONES = [1, 3, 7, 14, 21, 30, 60, 90];
 const MOOD_LABELS = { struggling: "Struggling", low: "Low", okay: "Okay", good: "Good", great: "Great" };
@@ -16,6 +17,7 @@ export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
   const [error, setError] = useState("");
   const [reminderSaving, setReminderSaving] = useState(false);
   const [emailNudgeDismissed, setEmailNudgeDismissed] = useState(false);
+  const [celebrating, setCelebrating] = useState(false);
 
   async function load() {
     try {
@@ -33,6 +35,19 @@ export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
       const todaysEntry = c.find((entry) => new Date(entry.date).toDateString() === today);
       setCheckedInToday(Boolean(todaysEntry));
       setTodaysMood(todaysEntry?.mood || null);
+
+      // Celebrate the first time the dashboard loads after crossing a new
+      // milestone. Tracked per-account in localStorage so it fires exactly
+      // once per threshold, not on every visit.
+      const highestReached = [...MILESTONES].reverse().find((m) => u.streak >= m);
+      if (highestReached) {
+        const key = `clearday_celebrated_${u.id}`;
+        const lastCelebrated = Number(localStorage.getItem(key) || 0);
+        if (highestReached > lastCelebrated) {
+          localStorage.setItem(key, String(highestReached));
+          setCelebrating(true);
+        }
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -45,6 +60,10 @@ export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
   async function handleRelapse() {
     if (!confirm("Log a relapse and restart your streak from today? That's okay — it happens, and restarting counts as progress too.")) return;
     await api.relapse();
+    // Reset milestone-celebration tracking too — hitting day 1 again after
+    // restarting is worth celebrating on its own, not suppressed just
+    // because it's below a previous high-water mark.
+    if (user) localStorage.removeItem(`clearday_celebrated_${user.id}`);
     load();
   }
 
@@ -84,6 +103,7 @@ export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
 
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+      {celebrating && <Celebration onDone={() => setCelebrating(false)} />}
       {showEmailNudge && (
         <div className="rounded-2xl p-4 flex items-start gap-3" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
           <span className="text-lg">🔑</span>

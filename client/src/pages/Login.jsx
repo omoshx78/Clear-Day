@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
 import Logo from "../components/Logo.jsx";
+import SunriseIllustration from "../components/SunriseIllustration.jsx";
 
 export default function Login({ onLoggedIn }) {
   const [step, setStep] = useState("phone"); // phone | login | register | forgot | reset
@@ -107,6 +108,11 @@ export default function Login({ onLoggedIn }) {
 
   return (
     <div className="max-w-md mx-auto px-4 py-12">
+      {step === "phone" && (
+        <div className="h-40 rounded-2xl overflow-hidden mb-6 shadow-sm">
+          <SunriseIllustration className="w-full h-full" />
+        </div>
+      )}
       <Logo size={56} className="mb-4" />
       <h1 className="text-3xl font-bold text-ink mb-1">
         {step === "phone" ? "You're not alone" : "Welcome to ClearDay"}

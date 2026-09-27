@@ -27,6 +27,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import NavBar from "./components/NavBar.jsx";
 import BottomNav from "./components/BottomNav.jsx";
 import Footer from "./components/Footer.jsx";
+import SideDecoration from "./components/SideDecoration.jsx";
 import CrisisButton from "./components/CrisisButton.jsx";
 import { api } from "./api.js";
 import { getAdminSecret, clearAdminSecret } from "./adminApi.js";
@@ -106,6 +107,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SideDecoration />
       {token && onboarded && <NavBar onLogout={handleLogout} />}
       <main className="flex-1 pb-20 sm:pb-0">
         {checking ? (

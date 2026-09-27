@@ -76,6 +76,44 @@ deployed app now that this much has changed, an onboarding walkthrough,
 an accessibility pass, and product analytics. Happy to pick any of these
 up next.
 
+## Illustration, the side-gutter space, and a milestone celebration
+Three pieces, all custom SVG/CSS — deliberately not stock photography, to
+avoid licensing risk and external dependencies (you mentioned you'll
+source copyright-clear photos yourself later; each piece below is built as
+its own small component specifically so swapping in a real photo later is
+a one-file change, noted in a comment at the top of
+`SunriseIllustration.jsx`).
+
+- **`client/src/components/SunriseIllustration.jsx`** — a flat, layered
+  sunrise-over-hills illustration in the app's existing brand palette,
+  extending the logo's sunrise motif rather than introducing a new visual
+  language. One `viewBox`, `preserveAspectRatio="slice"` crops it cleanly
+  for any container size, so the same artwork serves both uses below
+  without separate variants.
+- **`client/src/components/SideDecoration.jsx`** — fills the empty gutters
+  beside the centered content on wide screens (answers the original "is
+  this for ads" question directly: it's not, nothing ad-related exists
+  anywhere in this app). Fixed-position, `pointer-events-none`, hidden
+  entirely below the `lg` breakpoint — phone users never see or load it.
+  The two sides mirror the same artwork via a CSS `scaleX(-1)` rather than
+  drawing it twice.
+- **Login hero** — the same illustration as a banner above the headline on
+  the very first screen, the highest-impact single spot for setting an
+  emotional tone before anyone reads a word.
+- **`client/src/components/Celebration.jsx`** — a brief (~2.4s), brand-colored
+  confetti burst, pure CSS keyframes, no new dependency (same philosophy as
+  the hand-drawn canvas share card). Deliberately restrained rather than
+  game-like, since this is a recovery app. Triggers once per newly-crossed
+  milestone (1/3/7/14/21/30/60/90 days) — tracked per-account in
+  `localStorage` so it fires exactly once per threshold, not on every
+  dashboard visit. Verified the crossing logic in isolation against every
+  boundary value before wiring it in.
+  One real product decision made while building this: a relapse now also
+  clears that tracking, so hitting day 1 again after restarting gets
+  celebrated too, rather than being silently suppressed for falling below
+  a previous high-water mark — consistent with the app's own existing
+  copy on the relapse button ("restarting counts as progress too").
+
 ## Recovery-email advisory + repeat-user nudge
 Rather than making a recovery email mandatory at signup (which would
 undercut the phone+PIN-only anonymity design), it stays optional but now
