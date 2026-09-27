@@ -65,6 +65,7 @@ app.post("/api/auth/register", async (req, res) => {
     failedPinAttempts: 0,
     lockedUntil: null,
     createdAt: new Date().toISOString(),
+    loginCount: 1, // registering counts as the first "login" — they're immediately in a session
   };
   const { error: insertError } = await supabase.from("users").insert(user);
   if (insertError) return dbError(res, insertError);
@@ -99,7 +100,7 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(401).json({ error: `Incorrect PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} left.` });
   }
 
-  await supabase.from("users").update({ failedPinAttempts: 0, lockedUntil: null }).eq("id", user.id);
+  await supabase.from("users").update({ failedPinAttempts: 0, lockedUntil: null, loginCount: (user.loginCount || 0) + 1 }).eq("id", user.id);
 
   const token = await createSession(user.id);
   res.json({ token, userId: user.id, isNewUser: false, onboarded: Boolean(user.addiction) });

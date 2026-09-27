@@ -39,7 +39,8 @@ create table if not exists users (
   "reminderTime" text default '19:00',
   "recoveryEmail" text,
   "pinResetCode" text,
-  "pinResetExpiresAt" timestamptz
+  "pinResetExpiresAt" timestamptz,
+  "loginCount" integer default 0
 );
 create index if not exists users_phone_idx on users (phone);
 create index if not exists users_provider_status_idx on users ("providerStatus");
@@ -119,3 +120,24 @@ create table if not exists feedback (
   date timestamptz default now()
 );
 create index if not exists feedback_status_idx on feedback (status);
+
+-- ---------------------------------------------------------------------------
+-- Migrations for existing databases
+-- ---------------------------------------------------------------------------
+-- The CREATE TABLE statements above are only read on a brand-new database —
+-- if you already ran an earlier version of this file, "create table if not
+-- exists" silently skips tables that already exist, so newly-added columns
+-- never get added to your live table. Run the ALTER TABLE statements below
+-- any time this file changes on a database you've already set up; they're
+-- safe to re-run (IF NOT EXISTS) and safe to run on a brand-new database too
+-- (the columns will already exist from the CREATE TABLE above, so these
+-- become no-ops).
+
+-- Added for the forgot-PIN / recovery-email feature:
+alter table users add column if not exists "recoveryEmail" text;
+alter table users add column if not exists "pinResetCode" text;
+alter table users add column if not exists "pinResetExpiresAt" timestamptz;
+
+-- Added to nudge repeat users who never added a recovery email:
+alter table users add column if not exists "loginCount" integer default 0;
+

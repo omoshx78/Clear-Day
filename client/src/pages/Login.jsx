@@ -219,6 +219,11 @@ export default function Login({ onLoggedIn }) {
               />
               I confirm I am 18 years of age or older.
             </label>
+            <p className="text-xs text-faint bg-subtlebg rounded-lg p-3">
+              💡 Once you're in, add a recovery email from Settings. It's the only way to
+              reset your PIN yourself if you forget it — without one, you'd need to contact
+              support and wait for help.
+            </p>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <button
               type="submit"

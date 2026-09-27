@@ -15,6 +15,7 @@ export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
   const [todaysMood, setTodaysMood] = useState(null);
   const [error, setError] = useState("");
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [emailNudgeDismissed, setEmailNudgeDismissed] = useState(false);
 
   async function load() {
     try {
@@ -79,9 +80,31 @@ export default function Dashboard({ reminderPrefs, onReminderPrefsChange }) {
   if (!user) return <p className="max-w-md mx-auto px-4 py-12 text-faint">Loading...</p>;
 
   const progress = Math.min(100, Math.round((user.streak / user.goalDays) * 100));
+  const showEmailNudge = !emailNudgeDismissed && (user.loginCount || 0) >= 3 && !user.recoveryEmail;
 
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+      {showEmailNudge && (
+        <div className="rounded-2xl p-4 flex items-start gap-3" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+          <span className="text-lg">🔑</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: "#92400e" }}>Don't get locked out</p>
+            <p className="text-xs mt-1" style={{ color: "#b45309" }}>
+              You've been back a few times now — add a recovery email so you can reset your
+              PIN yourself if you ever forget it.
+            </p>
+            <div className="flex gap-3 mt-2">
+              <Link to="/settings" className="text-xs font-semibold" style={{ color: "#92400e" }}>
+                Add email →
+              </Link>
+              <button onClick={() => setEmailNudgeDismissed(true)} className="text-xs text-faint">
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {quote && (
         <div className="rounded-2xl p-5 text-center text-white shadow-sm" style={{ background: "linear-gradient(135deg, #0d9488, #0f766e)" }}>
           <p className="text-sm italic leading-snug">&ldquo;{quote.text}&rdquo;</p>

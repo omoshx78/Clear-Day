@@ -76,6 +76,58 @@ deployed app now that this much has changed, an onboarding walkthrough,
 an accessibility pass, and product analytics. Happy to pick any of these
 up next.
 
+## Recovery-email advisory + repeat-user nudge
+Rather than making a recovery email mandatory at signup (which would
+undercut the phone+PIN-only anonymity design), it stays optional but now
+gets actively surfaced at the two moments it matters:
+
+- **At signup** — a short note under the age-confirmation checkbox in
+  `Login.jsx` explains the tradeoff plainly: add one later from Settings,
+  or you'll need to contact support instead of self-resetting if you
+  forget your PIN.
+- **Repeat users who skipped it** — a new `"loginCount"` column
+  (`server/schema.sql`, migration included) increments on every successful
+  register/login. Once it reaches 3 for an account with no
+  `recoveryEmail` set, the Dashboard shows a dismissible amber reminder
+  card linking straight to Settings. "Not now" only dismisses for that
+  session — it reappears next time they open the app, rather than being
+  permanently silence-able, since the actual lockout risk doesn't go away
+  just because someone brushed past the reminder once. Verified the full
+  counter logic end-to-end against a mock: 1 after registering, 2 and 3
+  after subsequent logins, and the nudge condition clearing the moment a
+  recovery email is saved.
+
+## Google/Facebook login — decided against
+Considered, deliberately not built. Two reasons: it works against the
+anonymity this app has been built around since the phone+PIN decision (no
+real name required, no OAuth profile data), and Facebook Login in
+particular now requires business verification (a registered business,
+physical address, and a signed contract with Meta) for the `email`
+permission — a real barrier that didn't exist a few years back. PIN-only
+login stands as the one and only login method.
+
+## Legal pages finalized + recovery-email fix
+- **Terms of Service and Privacy Policy** — removed the "draft, not
+  reviewed by a lawyer" framing; both now read as the live, current
+  policy (dated September 27, 2026). If you want an actual lawyer's pass
+  before wider launch, that's still worth doing, but the app no longer
+  displays these as unfinished.
+- **Fixed the recovery-email save error** — a real drift bug, not a code
+  bug: `recoveryEmail`, `pinResetCode`, and `pinResetExpiresAt` were added
+  to `schema.sql`'s `users` table *after* the Supabase project was already
+  set up and its original schema already run. `create table if not
+  exists` doesn't retroactively add columns to a table that already
+  exists, so the live database was missing all three — every attempt to
+  save a recovery email failed with a generic "Something went wrong."
+  Fixed two ways: gave the exact `ALTER TABLE ... ADD COLUMN IF NOT
+  EXISTS` statements to run once on the live database, and added the same
+  statements as a permanent **Migrations** section at the bottom of
+  `server/schema.sql` — safe to re-run any time this file changes on a
+  database that already exists (a no-op on a brand-new one, since the
+  columns are already in the `CREATE TABLE` above). Worth checking this
+  section any time a future schema change doesn't seem to take effect on
+  the live app.
+
 ## Footer — "Developed by JazzMedia"
 Added `client/src/components/Footer.jsx`, rendered on every screen
 (including the login/onboarding screens, before anyone's even signed up —

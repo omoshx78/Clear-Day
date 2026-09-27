@@ -3,12 +3,10 @@ import { useParams } from "react-router-dom";
 import BackBar from "../components/BackBar.jsx";
 
 const TERMS = `
-**Last updated: draft, not yet reviewed by a lawyer**
+**Last updated: September 27, 2026**
 
-These Terms of Service are a starting draft for ClearDay, run by JazzMedia
-(info@jazzmedia.co.ke). They are written to be genuinely useful as a first
-version, not a template — but they have **not been reviewed by a lawyer**,
-and shouldn't be treated as final until they are.
+These are the Terms of Service for ClearDay, run by JazzMedia
+(info@jazzmedia.co.ke).
 
 **1. What ClearDay is**
 ClearDay is a support tool for people working to quit smoking, alcohol, or
@@ -53,12 +51,10 @@ JazzMedia — info@jazzmedia.co.ke — https://www.jazzmedia.co.ke/
 `;
 
 const PRIVACY = `
-**Last updated: draft, not yet reviewed by a lawyer**
+**Last updated: September 27, 2026**
 
-This Privacy Policy is a starting draft, written with Kenya's **Data
-Protection Act, 2019** in mind, for ClearDay, run by JazzMedia
-(info@jazzmedia.co.ke). It has **not been reviewed by a lawyer** — treat it
-as a first version, not a final one, especially before wider launch.
+This Privacy Policy is written with Kenya's **Data Protection Act, 2019**
+in mind, for ClearDay, run by JazzMedia (info@jazzmedia.co.ke).
 
 **1. What we collect**
 - Your phone number and a hashed PIN (we never store your PIN in plain text)
@@ -141,9 +137,6 @@ export default function Legal() {
     <div className="max-w-md mx-auto px-4 py-8">
       <BackBar fallback="/dashboard" />
       <h1 className="text-2xl font-bold text-ink mt-3 mb-1">{isTerms ? "Terms of Service" : "Privacy Policy"}</h1>
-      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-        This is a working draft, not final legal advice — it hasn't been reviewed by a lawyer yet.
-      </p>
       <div>{renderMarkdownish(content.trim())}</div>
     </div>
   );
