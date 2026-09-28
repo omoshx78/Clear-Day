@@ -76,6 +76,34 @@ deployed app now that this much has changed, an onboarding walkthrough,
 an accessibility pass, and product analytics. Happy to pick any of these
 up next.
 
+## M-Pesa: "Invalid PhoneNumber" fix + choose which number gets the prompt
+Two changes to the M-Pesa checkout:
+
+- **Bug fix — the actual cause of `Bad Request - Invalid PhoneNumber`.**
+  ClearDay stores numbers as `+254712345678`, and that exact string was
+  being sent to Safaricom, which only accepts digits in the form
+  `254712345678` (no `+`). New `toDarajaMsisdn()` in `server/daraja.js`
+  accepts however someone types a number (`0712 345 678`,
+  `+254 712 345 678`, `712345678`, the `01xx` range too) and produces the
+  exact shape Daraja wants, or rejects it with a clear message. It runs in
+  **mock mode too, on purpose**: mock mode never contacts Safaricom, so
+  before this a badly formatted number passed every test and only failed
+  once real credentials were set — the reason this wasn't caught earlier.
+- **Choose the M-Pesa number.** Many people use one SIM for the app and
+  another for M-Pesa. "Pay with M-Pesa" now opens a small form with the
+  number pre-filled from the account (shown as `07XX…`) but editable, and
+  `POST /api/pro/checkout` accepts an optional `mpesaPhone`, falling back
+  to the account number if none is given. An invalid number gets a plain
+  400 with a readable message before anything is sent to Safaricom.
+
+Verified: 14 input shapes against the normalizer, and the real STK request
+body end to end against a stand-in for Safaricom that rejects anything but
+plain digits — default number, a different typed number, a `+254`-prefixed
+one, and garbage input all behaved correctly. As with the other external
+integrations, this couldn't be run against Safaricom's real servers from
+here, so the digits-only rule comes from Daraja's documented behaviour and
+the exact error text you saw; one real test payment is still worth doing.
+
 ## Automatic schema-drift detection (this exact bug has now happened 4 times)
 The `payments.provider` column from the Flutterwave addition hit the same
 drift issue as `recoveryEmail`, `pinResetCode`/`pinResetExpiresAt`, and

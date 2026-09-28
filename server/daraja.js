@@ -46,12 +46,35 @@ async function getAccessToken() {
   return data.access_token;
 }
 
+// Safaricom requires the M-Pesa number as digits only in international
+// format with no "+" — e.g. 254712345678 — and rejects anything else with
+// "Bad Request - Invalid PhoneNumber". ClearDay stores numbers as
+// +254712345678, so sending the stored value straight through fails. This
+// accepts whatever a person might type (0712 345 678, +254 712 345 678,
+// 712345678...) and returns the exact shape Daraja wants, or null if it
+// isn't a valid Safaricom-style number (254 followed by 7 or 1, then 8
+// more digits).
+export function toDarajaMsisdn(input) {
+  let digits = String(input || "").replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = "254" + digits.slice(1);
+  else if (/^[71]\d{8}$/.test(digits)) digits = "254" + digits;
+  return /^254[71]\d{8}$/.test(digits) ? digits : null;
+}
+
 // Kicks off an STK push ("Lipa Na M-Pesa Online") prompt on the user's phone.
 // Returns { checkoutRequestId } to correlate with the async callback.
 export async function initiateStkPush({ phone, amount, accountReference, description }) {
+  // Validated in mock mode too, on purpose — mock mode never talks to
+  // Safaricom, so without this a badly formatted number would sail through
+  // testing and only blow up once real credentials are set.
+  const msisdn = toDarajaMsisdn(phone);
+  if (!msisdn) {
+    throw new Error("That doesn't look like a valid M-Pesa number. Use a Safaricom number like 0712 345 678.");
+  }
+
   if (isMockMode) {
     const mockId = "MOCK-" + Math.random().toString(36).slice(2, 10).toUpperCase();
-    console.log(`[Daraja MOCK] STK push to ${phone} for KES ${amount} -> checkoutRequestId=${mockId}`);
+    console.log(`[Daraja MOCK] STK push to ${msisdn} for KES ${amount} -> checkoutRequestId=${mockId}`);
     return { checkoutRequestId: mockId, mock: true };
   }
 
@@ -71,9 +94,9 @@ export async function initiateStkPush({ phone, amount, accountReference, descrip
       Timestamp: ts,
       TransactionType: "CustomerPayBillOnline",
       Amount: amount,
-      PartyA: phone,
+      PartyA: msisdn,
       PartyB: SHORTCODE,
-      PhoneNumber: phone,
+      PhoneNumber: msisdn,
       CallBackURL: CALLBACK_URL,
       AccountReference: accountReference.slice(0, 12),
       TransactionDesc: description,

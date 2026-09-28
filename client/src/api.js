@@ -42,7 +42,7 @@ export const api = {
 
   getProPlan: () => request("/api/pro/plan"),
   getProStatus: () => request("/api/pro/status"),
-  startProCheckout: () => request("/api/pro/checkout", { method: "POST" }),
+  startProCheckout: (mpesaPhone) => request("/api/pro/checkout", { method: "POST", body: JSON.stringify({ mpesaPhone }) }),
   pollCheckout: (checkoutRequestId) => request(`/api/pro/checkout/${checkoutRequestId}`),
 
   getFlutterwaveInfo: () => request("/api/pro/flutterwave/info"),

@@ -8,7 +8,7 @@ import { sendEmail, isEmailMockMode } from "./email.js";
 import { randomQuote } from "./data-quotes.js";
 import { weeklyHobbies } from "./data-hobbies.js";
 import { CRISIS_RESOURCES } from "./data-crisis.js";
-import { initiateStkPush, simulateMockCallback, isMockMode } from "./daraja.js";
+import { initiateStkPush, simulateMockCallback, isMockMode, toDarajaMsisdn } from "./daraja.js";
 import { PRO_PLAN, isProActive } from "./pro.js";
 import { PROVIDER_SPECIALTIES, INSTITUTION_TYPES } from "./data-support.js";
 import { PLACE_CATEGORIES, searchNearbyPlaces, geocode } from "./places.js";
@@ -355,9 +355,18 @@ app.post("/api/pro/checkout", auth, async (req, res) => {
   if (lookupError) return dbError(res, lookupError);
   if (!user) return res.status(404).json({ error: "User not found" });
 
+  // The number that receives the M-Pesa prompt can differ from the number
+  // used to log in — plenty of people use one SIM for the app and another
+  // for M-Pesa. Falls back to the account number if none is given.
+  const { mpesaPhone } = req.body || {};
+  const msisdn = toDarajaMsisdn(mpesaPhone || user.phone);
+  if (!msisdn) {
+    return res.status(400).json({ error: "That doesn't look like a valid M-Pesa number. Use a Safaricom number like 0712 345 678." });
+  }
+
   try {
     const { checkoutRequestId, mock } = await initiateStkPush({
-      phone: user.phone,
+      phone: msisdn,
       amount: PRO_PLAN.priceKes,
       accountReference: "ClearDay Pro",
       description: "ClearDay Pro monthly subscription",

@@ -8,6 +8,8 @@ export default function Upgrade() {
   const [flwInfo, setFlwInfo] = useState(null);
   const [status, setStatus] = useState(null);
   const [checkoutState, setCheckoutState] = useState("idle"); // idle | pending | verifying | paid | failed
+  const [mpesaFormOpen, setMpesaFormOpen] = useState(false);
+  const [mpesaPhone, setMpesaPhone] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const location = useLocation();
@@ -17,6 +19,11 @@ export default function Upgrade() {
     api.getProPlan().then(setPlan).catch(() => {});
     api.getProStatus().then(setStatus).catch(() => {});
     api.getFlutterwaveInfo().then(setFlwInfo).catch(() => {});
+    // Pre-fill the M-Pesa number with the account number (shown as 07XX...),
+    // but keep it editable — some people use a different SIM for M-Pesa.
+    api.getMe().then((u) => {
+      if (u?.phone) setMpesaPhone(u.phone.replace(/^\+254/, "0"));
+    }).catch(() => {});
   }, []);
 
   // Land back here after a real (non-mock) Flutterwave checkout —
@@ -54,9 +61,13 @@ export default function Upgrade() {
 
   async function startMpesaCheckout() {
     setError("");
+    if (!mpesaPhone.trim()) {
+      setError("Enter the M-Pesa number that should receive the prompt.");
+      return;
+    }
     setCheckoutState("pending");
     try {
-      const res = await api.startProCheckout();
+      const res = await api.startProCheckout(mpesaPhone);
       setMessage(res.message);
       pollMpesa(res.checkoutRequestId);
     } catch (err) {
@@ -152,12 +163,38 @@ export default function Upgrade() {
                 simulate a successful payment after a few seconds instead of a real STK push.
               </p>
             )}
-            <button
-              onClick={startMpesaCheckout}
-              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
-            >
-              Pay with M-Pesa
-            </button>
+            {!mpesaFormOpen ? (
+              <button
+                onClick={() => setMpesaFormOpen(true)}
+                className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
+              >
+                Pay with M-Pesa
+              </button>
+            ) : (
+              <div className="bg-surface rounded-2xl border border-subtle p-4 space-y-3">
+                <label className="block text-sm font-semibold text-ink">
+                  M-Pesa number to send the prompt to
+                </label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={mpesaPhone}
+                  onChange={(e) => setMpesaPhone(e.target.value)}
+                  placeholder="e.g. 0712 345 678"
+                  className="w-full rounded-lg border border-subtle px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <p className="text-xs text-faint">
+                  Use the Safaricom number registered with M-Pesa — it doesn't have to be
+                  the same number you log in with.
+                </p>
+                <button
+                  onClick={startMpesaCheckout}
+                  className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition"
+                >
+                  Send M-Pesa prompt · KES {plan.priceKes}
+                </button>
+              </div>
+            )}
 
             {flwInfo?.mockMode && (
               <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">
