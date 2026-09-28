@@ -76,6 +76,38 @@ deployed app now that this much has changed, an onboarding walkthrough,
 an accessibility pass, and product analytics. Happy to pick any of these
 up next.
 
+## Automatic schema-drift detection (this exact bug has now happened 4 times)
+The `payments.provider` column from the Flutterwave addition hit the same
+drift issue as `recoveryEmail`, `pinResetCode`/`pinResetExpiresAt`, and
+`loginCount` before it — a column added to `schema.sql` after a live
+Supabase database was already set up, silently missing from that
+database, surfacing later as a vague "Something went wrong" during real
+use rather than at deploy time.
+
+Rather than fix this a fifth time the same way, added
+**`server/schemaCheck.js`**: runs once automatically every time the
+server starts, does a lightweight canary check for every column that's
+been added via a migration since the original schema, and — if anything's
+missing — prints a loud, specific warning straight to the server logs
+naming the exact table, column, and feature affected, and pointing at
+`schema.sql`'s Migrations section. Doesn't block startup or break
+anything else (same "warn loudly, keep running" approach as the Daraja/
+Resend/Flutterwave mock-mode fallbacks) — it just means this class of bug
+now shows up the moment you check Render's logs after a deploy, instead
+of waiting for a real user to hit the broken feature.
+
+Verified both outcomes directly: a clean "database is up to date" log
+when nothing's missing, and the exact warning format (table name, column
+name, which feature needs it, the underlying error) when something is —
+tested specifically against a simulated `payments.provider` drift,
+matching the real bug this was built in response to.
+
+**Going forward**: any time a new column gets added to `schema.sql`, add
+a matching entry to the `MIGRATED_COLUMNS` list at the top of
+`schemaCheck.js` too, so drift on that column gets caught the same way.
+Check Render's logs after every deploy from now on — this is exactly
+where the warning will show up.
+
 ## Flutterwave — second payment option alongside M-Pesa Daraja
 Added as an additional choice, not a replacement — the Upgrade page now
 offers both "Pay with M-Pesa" (direct Daraja) and "Pay with Flutterwave"

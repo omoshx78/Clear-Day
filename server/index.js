@@ -13,6 +13,7 @@ import { PRO_PLAN, isProActive } from "./pro.js";
 import { PROVIDER_SPECIALTIES, INSTITUTION_TYPES } from "./data-support.js";
 import { PLACE_CATEGORIES, searchNearbyPlaces, geocode } from "./places.js";
 import { initiateFlutterwaveCheckout, verifyFlutterwaveTransaction, verifyFlutterwaveWebhookSignature, isFlutterwaveMockMode } from "./flutterwave.js";
+import { checkSchema } from "./schemaCheck.js";
 
 const app = express();
 app.use(cors());
@@ -1013,4 +1014,7 @@ app.get("/api/admin/users", adminAuth, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Quit-app server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Quit-app server running on port ${PORT}`);
+  checkSchema(); // logs a loud warning if the live DB is missing any migrated column — never blocks startup
+});
